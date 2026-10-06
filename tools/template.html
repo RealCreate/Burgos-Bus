@@ -353,6 +353,19 @@ body{font:16px/1.4 var(--font-body);-webkit-font-smoothing:antialiased;letter-sp
   .panel,.langsheet{transition:opacity 160ms ease!important}
   .fab button:active,.chip:active,.linkbtn:active,.ibtn:active,.back:active,.langbtn:active,.seg button:active,.star:active{transform:none}
 }
+/* first-visit hint, pointing up at the Lines button */
+.hint{position:absolute;z-index:1001;left:12px;top:calc(var(--hdr) + 12px + 44px + 12px);max-width:min(300px,calc(100% - 24px));
+  display:flex;align-items:center;gap:10px;padding:10px 8px 10px 14px;border-radius:14px;
+  font:600 .88rem/1.3 var(--font-body);color:var(--ink);background:var(--glass);border:.5px solid var(--glass-edge);box-shadow:var(--float);
+  -webkit-backdrop-filter:blur(22px) saturate(180%);backdrop-filter:blur(22px) saturate(180%);
+  opacity:0;transform:translateY(-8px) scale(.96);transform-origin:40px 0;
+  transition:opacity 220ms ease,transform 220ms var(--ease-out)}
+.hint::before{content:"";position:absolute;top:-6px;left:34px;width:12px;height:12px;background:inherit;border-left:.5px solid var(--glass-edge);border-top:.5px solid var(--glass-edge);
+  transform:rotate(45deg);border-radius:3px 0 0 0;-webkit-backdrop-filter:none;backdrop-filter:none}
+.hint.show{opacity:1;transform:none;transition:opacity 260ms ease,transform 520ms cubic-bezier(.34,1.4,.64,1)}
+.hint .x{flex:none;width:28px;height:28px;border-radius:999px;display:grid;place-items:center;color:var(--muted);background:var(--sunk)}
+@media (prefers-reduced-transparency:reduce){.hint{background:var(--glass-solid);-webkit-backdrop-filter:none;backdrop-filter:none}}
+@media (prefers-reduced-motion:reduce){.hint,.hint.show{transform:none;transition:opacity 150ms ease}}
 /* appearance switch: one glyph that morphs sun -> moon -> auto */
 .themewrap{position:relative;flex:none;display:flex}
 .themebtn{width:34px;height:34px;border-radius:999px;background:var(--sunk);color:var(--ink);display:grid;place-items:center;flex:none;
@@ -404,6 +417,7 @@ body{font:16px/1.4 var(--font-body);-webkit-font-smoothing:antialiased;letter-sp
       <button id="open-lines" data-openpanel="lines"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span data-i18n="lines">Lines</span></button>
       <button id="open-stops" data-openpanel="stops"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10z"/><circle cx="12" cy="11" r="2.2"/></svg><span data-i18n="stops">Stops</span></button>
     </div>
+    <div class="hint" id="hint" hidden role="status"><span data-i18n="pickHint">Choose your lines to see them on the map</span><button class="x" id="hintx" data-i18n-aria="close" aria-label="Close"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
     <div class="selchip" id="selchip" hidden></div>
     <aside class="panel" id="panel" aria-label="Lines and stops" data-i18n-aria="panelAria" hidden>
       <div class="pbar"><span class="grabber" aria-hidden="true"></span>
@@ -488,9 +502,10 @@ const st = { tab:'lines', stack:[], day:0, q:'', sq:'', panel:false, full:false 
 let fav = {lines:[],stops:[]};
 try{const v=JSON.parse(localStorage.getItem('burgosbus-fav')||'null');if(v&&Array.isArray(v.lines)&&Array.isArray(v.stops))fav=v}catch(e){}
 function saveFav(){try{localStorage.setItem('burgosbus-fav',JSON.stringify(fav))}catch(e){}}
-const R05=R.findIndex(r=>r.n==='05');
-let active=new Set(R05>=0?[R05]:[]);
-try{const v=JSON.parse(localStorage.getItem('burgosbus-active')||'null');if(Array.isArray(v))active=new Set(v.filter(i=>R[i]))}catch(e){}
+/* new visitors start with no lines switched on: the whole network shows in grey until they pick */
+let active=new Set(), firstVisit=true;
+try{const v=JSON.parse(localStorage.getItem('burgosbus-active')||'null');if(Array.isArray(v)){active=new Set(v.filter(i=>R[i]));firstVisit=false}}catch(e){}
+try{if(localStorage.getItem('burgosbus-hinted'))firstVisit=false}catch(e){}
 /* Lines drawn on the map: the ones switched on, plus (only while a stop's timetable is open)
    every line serving that stop. Those extra lines are never written to `active`, so leaving the
    stop view drops them again while lines switched on beforehand stay on. */
@@ -946,6 +961,11 @@ function drawRoutes(sel){
   const shown=shownLines();
   const order=R.map(r=>r.i).filter(i=>i!==r0&&shown.has(i)); if(r0>=0) order.push(r0);
   const selP=P.find(q=>q.id===sel.pid);
+  /* the rest of the network, thin and grey, so the map always shows what the buses cover */
+  const greySeen=new Set(), greyOp=r0>=0?.16:(isDarkNow()?.42:.5);
+  for(const x of R){ if(shown.has(x.i)) continue;
+    for(const p of routeP[x.i]){ if(greySeen.has(p.sh)) continue; greySeen.add(p.sh);
+      L.polyline(SH[p.sh].pts,{color:'#8E8E93',weight:2.5,opacity:greyOp,interactive:false}).addTo(baseLayer); } }
   for(const r of order){
     const seen=new Set();
     const pats=routeP[r].slice().sort((a,b)=>(selP&&a.id===selP.id)-(selP&&b.id===selP.id));
@@ -1079,11 +1099,20 @@ function buildDays(){
 }
 function tickClock(){const n=madridNow();$('#clock').textContent=T('sub',{time:hhmm(n.sec)})}
 
+/* ---------- first-visit hint ---------- */
+let hintTimer=0;
+function showHint(){ if(!firstVisit) return; const h=$('#hint'); h.hidden=false;
+  hintTimer=setTimeout(()=>{ void h.offsetWidth; h.classList.add('show'); },700); }
+function dismissHint(){ if(!firstVisit) return; firstVisit=false; clearTimeout(hintTimer);
+  try{localStorage.setItem('burgosbus-hinted','1')}catch(e){}
+  const h=$('#hint'); h.classList.remove('show'); setTimeout(()=>{h.hidden=true},reduceMotion?160:260); }
+
 /* ---------- appearance ---------- */
 const THEME_NEXT={auto:'light',light:'dark',dark:'auto'};
 const themeName=m=>T(m==='auto'?'themeAuto':m==='light'?'themeLight':'themeDark');
 const sysDark=()=>matchMedia('(prefers-color-scheme: dark)').matches;
 const darkFor=m=>m==='dark'||(m==='auto'&&sysDark());
+const isDarkNow=()=>darkFor(themeMode);
 function paintThemeBtn(){const b=$('#themebtn'); b.dataset.mode=themeMode; b.setAttribute('aria-label',`${T('theme')}: ${themeName(themeMode)}`); b.title=T('theme');}
 function setTheme(m){
   const before=darkFor(themeMode), after=darkFor(m), root=document.documentElement;
@@ -1163,6 +1192,8 @@ document.addEventListener('click',e=>{
   if(t.id==='close-panel'){st.panel=false;st.full=false;render();return}
   if(t.id==='grow'){st.full=!st.full;render(true);return}
   if(t.hasAttribute('data-clearsel')){st.stack=[];render();return}
+  if(t.id==='hintx'||t.id==='open-lines'||t.dataset.toggle!=null||t.dataset.line!=null||t.hasAttribute('data-showall')) dismissHint();
+  if(t.id==='hintx') return;
   if(t.id==='themebtn'){setTheme(THEME_NEXT[themeMode]);return}
   if(t.id==='langbtn'){openLang(true);return}
   if(t.id==='langclose'){openLang(false);return}
@@ -1189,7 +1220,7 @@ view.addEventListener('input',onSearch);
 view.addEventListener('compositionend',onSearch);
 $('#day').addEventListener('change',e=>{st.day=+e.target.value;render(true);drawBuses()});
 
-applyStatic(); buildDays(); tickClock(); updHdr(); initMap(); applyStatic(); render();
+applyStatic(); buildDays(); tickClock(); updHdr(); initMap(); applyStatic(); render(); showHint();
 if(window.ResizeObserver) new ResizeObserver(updHdr).observe($('.top'));
 $('#langback').addEventListener('click',()=>openLang(false));
 /* Browsers keep a cached copy of the page for up to 10 minutes. Ask the server for the
