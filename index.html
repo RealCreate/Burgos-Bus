@@ -14,18 +14,18 @@
 /* Layout: one-screen transit app. Fixed header + scrolling view + bottom tab bar; route colours carry the identity, chrome stays neutral slate. */
 :root{
   --bg:#EDF0F3; --surface:#FFFFFF; --sunk:#E3E8ED; --ink:#13202C; --muted:#586775; --rule:#D3DAE1;
-  --accent:#0D5DA6; --accent-ink:#FFFFFF; --live:#0B8A57; --warn:#A64B12; --star:#C98A00;
+  --accent:#0D5DA6; --accent-ink:#FFFFFF; --live:#0B8A57; --warn:#A64B12; --star:#C98A00; --sel:#E4572E;
   --font-display:"Barlow Semi Condensed","Arial Narrow","Helvetica Neue",Arial,sans-serif;
   --font-body:"Atkinson Hyperlegible",system-ui,-apple-system,"Segoe UI",sans-serif;
   --shadow:0 1px 2px rgba(19,32,44,.08),0 4px 14px rgba(19,32,44,.06);
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   --bg:#0D141B; --surface:#16202A; --sunk:#0F1820; --ink:#E5ECF2; --muted:#93A3B1; --rule:#283644;
-  --accent:#6EB4F2; --accent-ink:#06121D; --live:#3CCB8A; --warn:#F0A066; --star:#F2C14E;
+  --accent:#6EB4F2; --accent-ink:#06121D; --live:#3CCB8A; --warn:#F0A066; --star:#F2C14E; --sel:#FF7A4D;
   --shadow:0 1px 2px rgba(0,0,0,.4),0 4px 14px rgba(0,0,0,.25); color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#0D141B; --surface:#16202A; --sunk:#0F1820; --ink:#E5ECF2; --muted:#93A3B1; --rule:#283644;
-  --accent:#6EB4F2; --accent-ink:#06121D; --live:#3CCB8A; --warn:#F0A066; --star:#F2C14E;
+  --accent:#6EB4F2; --accent-ink:#06121D; --live:#3CCB8A; --warn:#F0A066; --star:#F2C14E; --sel:#FF7A4D;
   --shadow:0 1px 2px rgba(0,0,0,.4),0 4px 14px rgba(0,0,0,.25); color-scheme:dark}
 
 html{height:100%;box-sizing:border-box}
@@ -167,6 +167,12 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 /* bus marker: a bus seen from above, turned to face its direction of travel.
    The body and the grey arrow in front of it rotate; the line number on the roof stays upright. */
 .vehwrap{pointer-events:none!important}
+/* selected stop: filled in the selection colour, white rim, soft pulsing ring */
+.selstop{pointer-events:none!important}
+.selstop .dot{position:absolute;inset:8px;border-radius:50%;background:var(--sel);box-shadow:0 0 0 3px #fff,0 2px 8px rgba(0,0,0,.45)}
+.selstop .ring{position:absolute;inset:0;border-radius:50%;border:3px solid var(--sel);opacity:0;animation:selpulse 1.8s ease-out infinite}
+@keyframes selpulse{0%{transform:scale(.45);opacity:.9}100%{transform:scale(1.25);opacity:0}}
+@media (prefers-reduced-motion:reduce){.selstop .ring{animation:none;opacity:.5;transform:scale(.9)}}
 .veh{position:relative;width:60px;height:60px;pointer-events:none}
 .veh .rot{position:absolute;inset:0;transition:transform .9s linear}
 .veh .body{position:absolute;left:50%;top:50%;width:19px;height:40px;margin:-20px 0 0 -9.5px;border-radius:6px 6px 4px 4px;background:var(--c);box-shadow:0 0 0 2px var(--surface),0 3px 7px rgba(0,0,0,.45);pointer-events:auto;cursor:pointer;overflow:hidden}
@@ -871,7 +877,7 @@ svg.leaflet-image-layer.leaflet-interactive path {
 (function(){
 "use strict";
 const STANDALONE = true;
-const BUILD = '06 Oct 11:30';
+const BUILD = '06 Oct 11:37';
 const CARTO_KEY = 'cb1_4bg4_1_4e4f55a8c87cd98973096db3';
 const D = JSON.parse(document.getElementById('gtfs').textContent);
 const $ = s => document.querySelector(s);
@@ -1181,6 +1187,8 @@ function initMap(){
     }
   }
   busLayer=L.layerGroup().addTo(map); ringLayer=L.layerGroup().addTo(map);
+  map.on('popupopen',e=>{if(e.popup._stop!=null){popupStop=e.popup._stop;markSel()}});
+  map.on('popupclose',e=>{if(e.popup._stop!=null&&e.popup._stop===popupStop){popupStop=null;markSel()}});
   map.on('click',()=>{ if(st.panel&&!wide()&&st.full){st.full=false;render(true)} });
 }
 function syncMap(){
@@ -1201,9 +1209,17 @@ function syncMap(){
     }
     drawBuses();
   }
-  ringLayer.clearLayers();
-  if(sel.stop!=null){const s=S[sel.stop];L.circleMarker([s.lat,s.lon],{radius:12,color:'#1A73E8',weight:3,fill:false,interactive:false}).addTo(ringLayer)}
+  markSel();
 }
+/* the stop whose pop-up is open wins; otherwise the stop open or highlighted in the panel */
+let popupStop=null;
+function markSel(){
+  if(!ringLayer) return; ringLayer.clearLayers();
+  const i=popupStop??selection().stop; if(i==null) return;
+  const s=S[i];
+  L.marker([s.lat,s.lon],{icon:L.divIcon({className:'selstop',html:'<span class="ring"></span><span class="dot"></span>',iconSize:[34,34],iconAnchor:[17,17]}),interactive:false,keyboard:false,zIndexOffset:400}).addTo(ringLayer);
+}
+function stopPop(i){const pp=L.popup({maxWidth:270}).setContent(stopPopup(i));pp._stop=i;return pp}
 function focusStop(i){
   if(!map) return; const s=S[i];
   map.fitBounds(L.latLng(s.lat,s.lon).toBounds(500),Object.assign({maxZoom:17},fitPad()));
@@ -1240,7 +1256,7 @@ function drawRoutes(sel){
     const on=lineStops.has(i), faded=r0>=0&&!on;
     const base=on?6:(faded?3.5:4.5);
     const m=L.circleMarker([S[i].lat,S[i].lon],{radius:base,color:on?R[r0].col:(faded?mut:ink),weight:on?3:1.5,opacity:faded?.55:1,fillColor:surf,fillOpacity:faded?.7:1});
-    m.on('click',()=>{m.bindPopup(stopPopup(i),{maxWidth:270}).openPopup()});
+    m.on('click',()=>{m.bindPopup(stopPop(i)).openPopup()});
     m.on('mouseover',()=>growStop(m,base*1.8));
     m.on('mouseout',()=>growStop(m,base));
     m.addTo(stopLayer);
@@ -1263,7 +1279,7 @@ function locateMe(){
     meMarker=L.marker(ll,{icon:L.divIcon({className:'',html:'<span class="me"></span>',iconSize:[18,18],iconAnchor:[9,9]}),keyboard:false,title:'You are here'}).addTo(map);
     let best=-1,bd=1e9; S.forEach((s,i)=>{if(!stopRefs[i].length)return;const d=(s.lat-ll[0])**2+((s.lon-ll[1])*Math.cos(ll[0]*Math.PI/180))**2;if(d<bd){bd=d;best=i}});
     const km=Math.sqrt(bd)*111;
-    if(best>=0&&km<3){ map.setView([S[best].lat,S[best].lon],17); L.popup({maxWidth:260}).setLatLng([S[best].lat,S[best].lon]).setContent(stopPopup(best)).openOn(map); }
+    if(best>=0&&km<3){ map.setView([S[best].lat,S[best].lon],17); stopPop(best).setLatLng([S[best].lat,S[best].lon]).openOn(map); }
     else map.setView(ll,15);
   },()=>{ L.popup().setLatLng(map.getCenter()).setContent('<div class="pop">Location is off. Allow location for this site in your browser settings to find your nearest stop.</div>').openOn(map); },{enableHighAccuracy:true,timeout:10000,maximumAge:30000});
 }
