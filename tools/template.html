@@ -1,24 +1,31 @@
 <title>Burgos Bus</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Barlow+Semi+Condensed:wght@500;600;700&display=swap">
 <style>
-/* Layout: one-screen transit app. Fixed header + scrolling view + bottom tab bar; route colours carry the identity, chrome stays neutral slate. */
+/* Layout: the map is the app. Header, buttons, panels and pop-ups float over it as translucent
+   material (Apple's approach); lists inside are iOS inset-grouped. Colours are iOS system colours. */
 :root{
-  --bg:#EDF0F3; --surface:#FFFFFF; --sunk:#E3E8ED; --ink:#13202C; --muted:#586775; --rule:#D3DAE1;
-  --accent:#0D5DA6; --accent-ink:#FFFFFF; --live:#0B8A57; --warn:#A64B12; --star:#C98A00; --sel:#E4572E;
-  --font-display:"Barlow Semi Condensed","Arial Narrow","Helvetica Neue",Arial,sans-serif;
-  --font-body:"Atkinson Hyperlegible",system-ui,-apple-system,"Segoe UI",sans-serif;
-  --shadow:0 1px 2px rgba(19,32,44,.08),0 4px 14px rgba(19,32,44,.06);
+  --bg:#F2F2F7; --surface:#FFFFFF; --sunk:rgba(118,118,128,.12); --ink:#000000; --muted:rgba(60,60,67,.62); --rule:rgba(60,60,67,.22);
+  --accent:#007AFF; --accent-ink:#FFFFFF; --live:#28A745; --warn:#C93400; --star:#FF9F0A; --sel:#FF9500;
+  --glass:rgba(249,249,251,.74); --glass-solid:#F9F9FB; --glass-edge:rgba(255,255,255,.55); --press:rgba(60,60,67,.10);
+  --seg-on:#FFFFFF; --seg-shadow:0 3px 8px rgba(0,0,0,.12),0 3px 1px rgba(0,0,0,.04);
+  --font-display:-apple-system,"SF Pro Display",system-ui,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --font-body:-apple-system,"SF Pro Text",system-ui,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --shadow:0 1px 2px rgba(0,0,0,.06);
+  --float:0 8px 32px rgba(0,0,0,.14),0 1px 3px rgba(0,0,0,.08);
+  --ease-out:cubic-bezier(.23,1,.32,1); --ease-drawer:cubic-bezier(.32,.72,0,1);
+  --hdr:60px;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
-  --bg:#0D141B; --surface:#16202A; --sunk:#0F1820; --ink:#E5ECF2; --muted:#93A3B1; --rule:#283644;
-  --accent:#6EB4F2; --accent-ink:#06121D; --live:#3CCB8A; --warn:#F0A066; --star:#F2C14E; --sel:#FF7A4D;
-  --shadow:0 1px 2px rgba(0,0,0,.4),0 4px 14px rgba(0,0,0,.25); color-scheme:dark}}
+  --bg:#000000; --surface:#1C1C1E; --sunk:rgba(118,118,128,.24); --ink:#FFFFFF; --muted:rgba(235,235,245,.62); --rule:rgba(84,84,88,.6);
+  --accent:#0A84FF; --accent-ink:#FFFFFF; --live:#30D158; --warn:#FF9F0A; --star:#FFD60A; --sel:#FF9F0A;
+  --glass:rgba(30,30,32,.72); --glass-solid:#1E1E20; --glass-edge:rgba(255,255,255,.08); --press:rgba(235,235,245,.12);
+  --seg-on:#636366; --seg-shadow:0 3px 8px rgba(0,0,0,.3);
+  --shadow:none; --float:0 8px 32px rgba(0,0,0,.5),0 1px 3px rgba(0,0,0,.4); color-scheme:dark}}
 :root[data-theme="dark"]{
-  --bg:#0D141B; --surface:#16202A; --sunk:#0F1820; --ink:#E5ECF2; --muted:#93A3B1; --rule:#283644;
-  --accent:#6EB4F2; --accent-ink:#06121D; --live:#3CCB8A; --warn:#F0A066; --star:#F2C14E; --sel:#FF7A4D;
-  --shadow:0 1px 2px rgba(0,0,0,.4),0 4px 14px rgba(0,0,0,.25); color-scheme:dark}
+  --bg:#000000; --surface:#1C1C1E; --sunk:rgba(118,118,128,.24); --ink:#FFFFFF; --muted:rgba(235,235,245,.62); --rule:rgba(84,84,88,.6);
+  --accent:#0A84FF; --accent-ink:#FFFFFF; --live:#30D158; --warn:#FF9F0A; --star:#FFD60A; --sel:#FF9F0A;
+  --glass:rgba(30,30,32,.72); --glass-solid:#1E1E20; --glass-edge:rgba(255,255,255,.08); --press:rgba(235,235,245,.12);
+  --seg-on:#636366; --seg-shadow:0 3px 8px rgba(0,0,0,.3);
+  --shadow:none; --float:0 8px 32px rgba(0,0,0,.5),0 1px 3px rgba(0,0,0,.4); color-scheme:dark}
 
 html{height:100%;box-sizing:border-box}
 *,*::before,*::after{box-sizing:border-box}
@@ -229,6 +236,124 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .leaflet-control-attribution{background:color-mix(in srgb,var(--surface) 85%,transparent)!important;color:var(--muted)!important}
 .leaflet-control-attribution a{color:var(--accent)!important}
 __LEAFLET_CSS__
+
+/* ================= Apple layer ================= */
+body{font:16px/1.4 var(--font-body);-webkit-font-smoothing:antialiased;letter-spacing:-.01em}
+.app{position:relative}
+.stage{position:absolute;inset:0}
+/* translucent material: blur what's underneath instead of covering it */
+.top,.fab button,.selchip,.panel,.langsheet,.leaflet-popup-content-wrapper,.leaflet-bar{
+  background:var(--glass)!important;-webkit-backdrop-filter:blur(22px) saturate(180%);backdrop-filter:blur(22px) saturate(180%)}
+@media (prefers-reduced-transparency:reduce){
+  .top,.fab button,.selchip,.panel,.langsheet,.leaflet-popup-content-wrapper,.leaflet-bar{background:var(--glass-solid)!important;-webkit-backdrop-filter:none;backdrop-filter:none}}
+.top{position:absolute;z-index:1500;left:0;right:0;top:0;padding:8px 14px;border-bottom:.5px solid var(--rule);box-shadow:none}
+.brand{font:600 1.18rem/1.1 var(--font-display);letter-spacing:-.02em;gap:10px}
+.brand svg rect{rx:8}
+.brand small{font:400 .74rem/1.2 var(--font-body);letter-spacing:0;margin-top:2px}
+.day,.langbtn{background-color:var(--sunk);border:0;font:600 .86rem var(--font-body);letter-spacing:-.01em;min-height:34px}
+.langbtn{padding:5px 11px}
+/* floating controls sit under the header */
+.fab{top:calc(var(--hdr) + 12px)}
+.fab button{border:.5px solid var(--glass-edge);box-shadow:var(--float);font-weight:600;padding:10px 16px;min-height:44px}
+.selchip{border:.5px solid var(--glass-edge);box-shadow:var(--float)}
+.leaflet-top{top:calc(var(--hdr) + 6px)!important}
+.leaflet-bar{border:.5px solid var(--glass-edge)!important;box-shadow:var(--float)!important;border-radius:12px!important;overflow:hidden}
+.leaflet-bar a{background:transparent!important;border-color:var(--rule)!important;color:var(--ink)!important;width:36px!important;height:36px!important;line-height:36px!important;font-weight:400}
+.leaflet-bar a.locate{color:var(--accent)!important}
+/* pressable things answer on touch-down */
+.fab button,.chip,.linkbtn,.seg button,.tog,.ibtn,.back,.star,.langbtn,.day,.selchip button,.pop button,.leaflet-bar a{transition:transform 140ms var(--ease-out),background-color 200ms ease}
+.fab button:active,.chip:active,.linkbtn:active,.ibtn:active,.back:active,.langbtn:active,.selchip button:active,.pop button:active{transform:scale(.96)}
+.seg button:active,.star:active{transform:scale(.94)}
+.row:active,.dep:active,.lrow:active,.stop .nm:active{background:var(--press)!important;transition:none}
+.row,.dep,.lrow{transition:background-color 220ms ease}
+/* panel: material sheet. Tablet = floating card on the left; phone = bottom sheet with a grabber */
+.panel{transition:none;border:.5px solid var(--glass-edge);box-shadow:var(--float);background:var(--glass)!important}
+@media (min-width:700px){
+  .panel{top:calc(var(--hdr) + 12px);border-radius:20px;opacity:0;transform:translateX(-14px) scale(.985);transform-origin:top left;
+    transition:opacity 220ms var(--ease-out),transform 260ms var(--ease-out)}
+  .panel.open{opacity:1;transform:none}
+}
+@media (max-width:699px){
+  .panel,.panel.full{top:var(--hdr);height:auto;bottom:0;border-radius:16px 16px 0 0;will-change:transform}
+  .panel .view{padding-bottom:var(--sheet-gap,0px)}
+}
+.grabber{display:none}
+@media (max-width:699px){
+  .grabber{display:block;position:absolute;left:50%;top:6px;width:36px;height:5px;margin-left:-18px;border-radius:3px;background:var(--rule);z-index:2}
+  .pbar{padding-top:16px;touch-action:none;cursor:grab}
+}
+.pbar{background:transparent;border-bottom:.5px solid var(--rule)}
+.view{background:transparent}
+.pad{padding:12px 16px 32px}
+/* inset grouped lists */
+.list,.tl{border-radius:12px;box-shadow:none;background:var(--surface)}
+.row,.dep{border-top:0;position:relative;min-height:52px}
+.row+.row::before,.dep+.dep::before,.lrow+.lrow::before{content:"";position:absolute;top:0;right:0;left:16px;border-top:.5px solid var(--rule)}
+.list>.row>.row::before{display:none}
+.lrow{border-top:0;position:relative}
+.row .t1,.dep .hs,.lrow .t1{font-weight:590;letter-spacing:-.015em}
+.row .t2,.dep .via{font-size:.82rem;letter-spacing:-.005em}
+.eyebrow{font:400 .8rem var(--font-body);letter-spacing:0;text-transform:none;color:var(--muted);margin:22px 16px 7px}
+.note{font-size:.8rem;margin:16px 16px 0}
+.search{border:0;background:var(--sunk);border-radius:10px;padding:10px 12px 10px 34px;font-size:1rem;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%238E8E93' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='7' cy='7' r='5.2'/%3E%3Cpath d='m11 11 3.5 3.5'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:11px 50%}
+.search::placeholder{color:var(--muted)}
+/* segmented control */
+.seg{background:var(--sunk);border-radius:9px;padding:2px;gap:2px}
+.seg button{border-radius:7px;font-weight:590;color:var(--ink);opacity:.9;padding:8px 8px}
+.seg button[aria-pressed="true"]{background:var(--seg-on);box-shadow:var(--seg-shadow);opacity:1}
+.seg button span{color:var(--muted)}
+.pbar .seg button{padding:6px 8px}
+.chip{border:0;background:var(--sunk);color:var(--ink);font-weight:590;padding:7px 12px}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--surface)}
+.bulk .chip{color:var(--accent)}
+.linkbtn{border:0;background:var(--sunk);color:var(--accent);font-weight:590}
+.badge{font-family:var(--font-display);font-weight:700;border-radius:7px;letter-spacing:-.01em}
+.badge.off{background:var(--sunk)!important;box-shadow:none;color:var(--muted)!important}
+.tm{font-family:var(--font-display);border-radius:8px}
+.tm.next{background:var(--accent);color:#fff}
+.dep .when{font-family:var(--font-display);font-weight:600;letter-spacing:-.02em}
+.full .hr b,.full .hr span{font-family:var(--font-display)}
+/* detail header: part of the material, sticks while the list scrolls under it */
+.dhead{background:var(--glass);-webkit-backdrop-filter:blur(22px) saturate(180%);backdrop-filter:blur(22px) saturate(180%);border-bottom:.5px solid var(--rule)}
+.dhead h2{font:650 1.2rem/1.15 var(--font-display);letter-spacing:-.022em}
+.back{color:var(--accent)}
+.star{color:var(--rule);font-size:1.3rem}
+.star.on{color:var(--star)}
+/* map pop-ups: an iOS callout that grows out of the point it belongs to */
+.leaflet-popup-content-wrapper{border-radius:16px!important;box-shadow:var(--float)!important;border:.5px solid var(--glass-edge);color:var(--ink)!important;
+  transform-origin:50% 100%;animation:callout 200ms var(--ease-out)}
+.leaflet-popup-tip{background:var(--glass-solid)!important;box-shadow:none!important}
+.leaflet-popup-content{margin:14px 16px!important;font-size:.92rem;line-height:1.4}
+.leaflet-popup-close-button{color:var(--muted)!important;top:6px!important;right:6px!important}
+@keyframes callout{from{opacity:0;transform:scale(.94) translateY(4px)}}
+.pop h4{font:650 1.02rem/1.2 var(--font-display);letter-spacing:-.02em}
+.pop button{color:var(--accent);font-weight:590}
+.leaflet-control-attribution{background:transparent!important;font-size:10px}
+/* panel navigation: forward slides in from the right, back returns from the left */
+.nav-push>*{animation:navPush 260ms var(--ease-out)}
+.nav-pop>*{animation:navPop 260ms var(--ease-out)}
+@keyframes navPush{from{opacity:0;transform:translateX(28px)}}
+@keyframes navPop{from{opacity:0;transform:translateX(-28px)}}
+/* language sheet: slides up on phones, grows from its button on tablets */
+.langback{transition:opacity 240ms ease;opacity:0}
+.langback.open{opacity:1}
+.langsheet{border:.5px solid var(--glass-edge);box-shadow:var(--float)}
+@media (min-width:700px){.langsheet{top:calc(var(--hdr) + 8px);border-radius:16px;transform-origin:top right;opacity:0;transform:scale(.96);transition:opacity 180ms var(--ease-out),transform 220ms var(--ease-out)}}
+@media (max-width:699px){.langsheet{border-radius:16px 16px 0 0;transform:translateY(100%);transition:transform 320ms var(--ease-drawer)}}
+.langsheet.open{opacity:1;transform:none}
+.lshead h3{font:650 1.15rem var(--font-display);letter-spacing:-.02em}
+.lslist .list{background:var(--surface)}
+/* map markers */
+.veh .body{box-shadow:0 0 0 2px #fff,0 3px 8px rgba(0,0,0,.4)}
+.selstop .dot{box-shadow:0 0 0 3px #fff,0 2px 10px rgba(0,0,0,.35)}
+@media (prefers-reduced-motion:reduce){
+  .nav-push>*,.nav-pop>*{animation:navFade 160ms ease}
+  @keyframes navFade{from{opacity:0}}
+  .leaflet-popup-content-wrapper{animation:none}
+  .panel,.langsheet{transition:opacity 160ms ease!important}
+  .fab button:active,.chip:active,.linkbtn:active,.ibtn:active,.back:active,.langbtn:active,.seg button:active,.star:active{transform:none}
+}
 </style>
 
 <div class="app" id="app">
@@ -249,7 +374,7 @@ __LEAFLET_CSS__
     </div>
     <div class="selchip" id="selchip" hidden></div>
     <aside class="panel" id="panel" aria-label="Lines and stops" data-i18n-aria="panelAria" hidden>
-      <div class="pbar">
+      <div class="pbar"><span class="grabber" aria-hidden="true"></span>
         <button class="ibtn grab" id="grow" aria-label="Expand panel"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m6 15 6-6 6 6"/></svg></button>
         <div class="seg" role="group" aria-label="Section" data-i18n-aria="section"><button id="tab-lines" data-tab="lines" aria-pressed="true" data-i18n="lines">Lines</button><button id="tab-stops" data-tab="stops" aria-pressed="false" data-i18n="stops">Stops</button></div>
         <button class="ibtn" id="close-panel" aria-label="Close panel" data-i18n-aria="close"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
@@ -447,8 +572,7 @@ function render(keepScroll){
   const y=view.scrollTop;
   const top=st.stack[st.stack.length-1];
   document.querySelectorAll('.pbar [data-tab]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tab===st.tab&&!top)));
-  $('#panel').hidden=!st.panel; $('#fab').hidden=st.panel;
-  $('#panel').classList.toggle('full',st.full);
+  panelTo(st.panel?(st.full?'large':'medium'):'closed'); $('#fab').hidden=st.panel;
   $('#grow').setAttribute('aria-label',T(st.full?'shrink':'expand'));
   $('#grow svg').style.transform=st.full?'rotate(180deg)':'';
   if(st.panel){
@@ -457,7 +581,13 @@ function render(keepScroll){
     else if(st.tab==='lines') view.innerHTML=linesView();
     else view.innerHTML=stopsView();
     if(keepScroll) view.scrollTop=y;
+    /* iOS-style navigation: deeper slides in from the right, back returns from the left */
+    const depth=st.stack.length;
+    if(!keepScroll&&navPrev.open&&depth!==navPrev.depth){
+      view.classList.remove('nav-push','nav-pop'); void view.offsetWidth; view.classList.add(depth>navPrev.depth?'nav-push':'nav-pop');
+    }
   }
+  navPrev={open:st.panel,depth:st.stack.length};
   syncMap();
   syncHistory();
 }
@@ -472,11 +602,81 @@ function syncHistory(){
 window.addEventListener('popstate',()=>{
   if(ignorePop){ ignorePop=false; return; }
   navDepth=Math.max(0,navDepth-1);
-  if(!$('#langsheet').hidden){ openLang(false); }
+  if($('#langsheet').classList.contains('open')){ openLang(false); }
   if(st.stack.length) st.stack.pop(); else if(st.panel){ st.panel=false; st.full=false; }
   render(true);
 });
 const wide=()=>matchMedia('(min-width:700px)').matches;
+let navPrev={open:false,depth:0};
+
+/* ---------- panel: floating card on tablets, spring-driven bottom sheet on phones ---------- */
+const panelEl=$('#panel');
+const hdrH=()=>$('.top').offsetHeight;
+function updHdr(){ $('.app').style.setProperty('--hdr',hdrH()+'px'); }
+const sheet={y:null,v:0,raf:0,state:'closed'};
+let flickV=0;
+function sheetH(){ return panelEl.offsetHeight||Math.max(200,$('.stage').clientHeight-hdrH()); }
+function detentY(n){ const H=sheetH(); return n==='large'?0:n==='medium'?Math.round(H*0.42):H+16; }
+function setSheetY(y){ sheet.y=y; panelEl.style.transform=`translate3d(0,${y.toFixed(2)}px,0)`; }
+/* Apple's spring: damping ratio + response (seconds). Critically damped by default; a touch of bounce
+   only when a flick handed it velocity. Interruptible: it always starts from the current position. */
+function springSheet(target,v0,zeta,resp,done){
+  cancelAnimationFrame(sheet.raf); sheet.v=v0||0;
+  if(reduceMotion||sheet.y==null){ setSheetY(target); sheet.raf=0; done&&done(); return; }
+  const k=Math.pow(2*Math.PI/resp,2), c=4*Math.PI*zeta/resp; let last=performance.now();
+  const step=now=>{
+    const dt=Math.min(.034,(now-last)/1000); last=now;
+    for(let i=0;i<4;i++){ const h=dt/4, a=-k*(sheet.y-target)-c*sheet.v; sheet.v+=a*h; sheet.y+=sheet.v*h; }
+    setSheetY(sheet.y);
+    if(Math.abs(sheet.y-target)<.5&&Math.abs(sheet.v)<10){ setSheetY(target); sheet.raf=0; done&&done(); return; }
+    sheet.raf=requestAnimationFrame(step);
+  };
+  sheet.raf=requestAnimationFrame(step);
+}
+let cardTimer=0;
+function panelTo(name){
+  const open=name!=='closed';
+  if(wide()){
+    panelEl.style.transform=''; sheet.state=name; clearTimeout(cardTimer);
+    if(open){ if(panelEl.hidden){ panelEl.hidden=false; void panelEl.offsetWidth; } panelEl.classList.add('open'); }
+    else if(!panelEl.hidden){ panelEl.classList.remove('open'); cardTimer=setTimeout(()=>{ if(!st.panel) panelEl.hidden=true; },280); }
+    return;
+  }
+  panelEl.classList.add('open');
+  if(sheet.state===name&&!flickV) return;          /* already there or on its way */
+  sheet.state=name;
+  if(open&&panelEl.hidden){ panelEl.hidden=false; setSheetY(detentY('closed')); }
+  if(open) panelEl.style.setProperty('--sheet-gap',detentY(name)+'px');   /* lets the list scroll fully into view */
+  const v=flickV; flickV=0;
+  springSheet(detentY(name),v,v?.82:1,.34,()=>{ if(name==='closed'&&!st.panel) panelEl.hidden=true; });
+}
+const project=(v,d=.998)=>(v/1000)*d/(1-d);              /* where a flick would come to rest */
+const rubber=(o,dim,c=.55)=>(o*dim*c)/(dim+c*Math.abs(o));  /* resistance past the top */
+(function sheetDrag(){
+  const bar=panelEl.querySelector('.pbar'); let drag=null;
+  bar.addEventListener('pointerdown',e=>{
+    if(wide()||drag||e.target.closest('button,input,a,select')) return;
+    try{bar.setPointerCapture(e.pointerId)}catch(_){}
+    cancelAnimationFrame(sheet.raf); sheet.raf=0;
+    drag={id:e.pointerId,y0:e.clientY,s0:sheet.y??detentY('medium'),hist:[[e.timeStamp,e.clientY]]};
+  });
+  bar.addEventListener('pointermove',e=>{
+    if(!drag||e.pointerId!==drag.id) return;
+    let y=drag.s0+(e.clientY-drag.y0); if(y<0) y=-rubber(-y,sheetH());
+    setSheetY(y); drag.hist.push([e.timeStamp,e.clientY]); if(drag.hist.length>6) drag.hist.shift();
+  });
+  const end=e=>{
+    if(!drag||e.pointerId!==drag.id) return;
+    const h=drag.hist; drag=null; let v=0;
+    if(h.length>1){ const [t0,a]=h[0],[t1,b]=h[h.length-1]; if(t1>t0) v=(b-a)/(t1-t0)*1000; }
+    const proj=sheet.y+project(v);
+    const best=['large','medium','closed'].map(n=>[n,detentY(n)]).reduce((a,b)=>Math.abs(b[1]-proj)<Math.abs(a[1]-proj)?b:a)[0];
+    flickV=v||.0001; sheet.state=null;
+    if(best==='closed'){ st.panel=false; st.full=false; } else st.full=(best==='large');
+    render(true);
+  };
+  bar.addEventListener('pointerup',end); bar.addEventListener('pointercancel',end);
+})();
 function fallbackBanner(c){
   const r=resolveKey(c.key);
   if(!r.fb) return '';
@@ -621,11 +821,11 @@ function selection(){
   return {r:-1,pid:null,stop:null};
 }
 function fitPad(){
-  const panel=$('#panel');
-  if(!st.panel) return {paddingTopLeft:[24,70],paddingBottomRight:[24,80]};
-  if(wide()) return {paddingTopLeft:[panel.offsetWidth+40,24],paddingBottomRight:[24,24]};
-  if(st.full) return {paddingTopLeft:[20,20],paddingBottomRight:[20,20]};  /* map is hidden behind the sheet; don't pad by a full screen */
-  return {paddingTopLeft:[20,20],paddingBottomRight:[20,panel.offsetHeight+20]};
+  const hd=hdrH();
+  if(!st.panel) return {paddingTopLeft:[24,hd+70],paddingBottomRight:[60,80]};
+  if(wide()) return {paddingTopLeft:[panelEl.offsetWidth+40,hd+24],paddingBottomRight:[60,24]};
+  if(st.full) return {paddingTopLeft:[20,hd+20],paddingBottomRight:[20,20]};  /* map is hidden behind the sheet; don't pad by a full screen */
+  return {paddingTopLeft:[20,hd+20],paddingBottomRight:[20,sheetH()-detentY('medium')+20]};
 }
 function initMap(){
   if(typeof L==='undefined'){ $('#map').innerHTML=`<div class="empty">${T('mapFail')}</div>`; return; }
@@ -857,10 +1057,12 @@ function langList(){
   if(more.length) h+=`<div class="eyebrow">${T('moreLangs')}</div><div class="list">${more.map(row).join('')}</div>`;
   $('#langlist').innerHTML=h||`<div class="empty">${T('noLangs')}</div>`;
 }
+let langTimer=0;
 function openLang(open){
-  $('#langsheet').hidden=!open; $('#langback').hidden=!open;
-  if(open){ $('#q-lang').value=''; langList(); if(wide()) $('#q-lang').focus(); }
-  else $('#langbtn').focus();
+  const sh=$('#langsheet'), bk=$('#langback'); clearTimeout(langTimer);
+  if(open){ sh.hidden=false; bk.hidden=false; void sh.offsetWidth; sh.classList.add('open'); bk.classList.add('open');
+    $('#q-lang').value=''; langList(); if(wide()) $('#q-lang').focus(); }
+  else { sh.classList.remove('open'); bk.classList.remove('open'); langTimer=setTimeout(()=>{ sh.hidden=true; bk.hidden=true; },reduceMotion?170:330); $('#langbtn').focus(); }
 }
 function setLang(c){
   if(!I18N[c]) return; lang=c;
@@ -918,7 +1120,8 @@ view.addEventListener('input',onSearch);
 view.addEventListener('compositionend',onSearch);
 $('#day').addEventListener('change',e=>{st.day=+e.target.value;render(true);drawBuses()});
 
-applyStatic(); buildDays(); tickClock(); initMap(); applyStatic(); render();
+applyStatic(); buildDays(); tickClock(); updHdr(); initMap(); applyStatic(); render();
+if(window.ResizeObserver) new ResizeObserver(updHdr).observe($('.top'));
 $('#langback').addEventListener('click',()=>openLang(false));
 /* Browsers keep a cached copy of the page for up to 10 minutes. Ask the server for the
    current page (bypassing the cache) and, if it was built after this copy, reload onto it. */
@@ -940,11 +1143,14 @@ setInterval(checkUpdate,5*60*1000);
 $('#q-lang').addEventListener('input',langList);
 document.addEventListener('keydown',e=>{
   if(e.key!=='Escape') return;
-  if(!$('#langsheet').hidden){ openLang(false); return; }
+  if($('#langsheet').classList.contains('open')){ openLang(false); return; }
   if(map&&map._popup&&map.hasLayer(map._popup)){ map.closePopup(); return; }
   if(st.panel){ if(st.stack.length) st.stack.pop(); else { st.panel=false; st.full=false; } render(); }
 });
-window.addEventListener('resize',()=>map&&map.invalidateSize());
+window.addEventListener('resize',()=>{ updHdr(); if(map) map.invalidateSize();
+  if(wide()){ panelEl.style.transform=''; panelEl.classList.toggle('open',st.panel); }
+  else if(st.panel){ sheet.state=null; flickV=0; cancelAnimationFrame(sheet.raf); setSheetY(detentY(st.full?'large':'medium')); sheet.state=st.full?'large':'medium'; panelEl.style.setProperty('--sheet-gap',detentY(sheet.state)+'px'); }
+});
 setInterval(()=>{
   tickClock();
   const a=document.activeElement; if(a&&a.tagName==='INPUT') return;
