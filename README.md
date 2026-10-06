@@ -10,6 +10,7 @@ Live site: https://realcreate.github.io/Burgos-Bus/
 - **Stops**: search by name or stop code for a departure board of every line.
 - **Map**: routes over a street map of Burgos. Tap a stop to see which lines stop there and their next times. The location button finds your nearest stop.
 - Favourite lines and stops are saved on your device.
+- **Install it**: in Safari tap Share → Add to Home Screen. It opens full-screen with the bus icon, and lines, stops and timetables keep working offline (the street map needs a connection).
 
 Bus positions are estimated from the timetable. Burgos does not currently publish a public live GPS feed.
 
