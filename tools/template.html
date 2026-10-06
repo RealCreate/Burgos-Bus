@@ -374,27 +374,30 @@ function activeTrips(pats,c){
    unless the bus that will run that trip is still driving in (an active trip of the same line
    ending near that stop), and only the earliest departure per line and stop area. */
 const WAIT_MAX=12*60;
-function waitingTrips(pats,c){
-  if(!c.live) return [];
+const tripKey=(p,t,off)=>p.id+':'+t.start+':'+off;
+/* Pair every trip that starts within WAIT_MAX with the bus that will run it: a bus of the same line
+   whose current trip ends near that first stop in time (earliest arrival takes the earliest
+   departure). Departures left without such a bus get a bus parked at their first stop. */
+function upcomingPlan(pats,c){
+  const plan={parked:[],incoming:new Map()};
+  if(!c.live) return plan;
   const N=c.nowSec, routes=new Set(pats.map(p=>p.r));
   const act=activeTrips(P.filter(p=>routes.has(p.r)),c);
-  const near=(a,b)=>distM(S[a].lat,S[a].lon,S[b].lat,S[b].lon)<200;
-  const cands=[];
-  for(const p of pats){for(const {t,off} of dayTrips(p,c)){
-    const t0=t.start+off; if(t0<=N||t0-N>WAIT_MAX) continue;
-    cands.push({p,t,off,k:0,f:0,wait:true,t0});
-  }}
-  cands.sort((a,b)=>a.t0-b.t0);
-  const out=[], used=[];
-  for(const w of cands){
-    const s0=w.p.s[0];
-    if(used.some(u=>u.r===w.p.r&&near(u.s,s0))) continue;   /* one parked bus per line per stop */
-    used.push({r:w.p.r,s:s0});
-    const incoming=act.some(a=>a.p.r===w.p.r&&near(a.p.s[a.p.s.length-1],s0)&&a.t.start+a.off+a.t.prof[a.t.prof.length-1]<=w.t0+60);
-    if(!incoming) out.push(w);
+  const near=(a,b)=>a===b||distM(S[a].lat,S[a].lon,S[b].lat,S[b].lon)<250;
+  const deps=[];
+  for(const p of P){ if(!routes.has(p.r)) continue;
+    for(const {t,off} of dayTrips(p,c)){const t0=t.start+off; if(t0>N&&t0-N<=WAIT_MAX) deps.push({p,t,off,k:0,f:0,wait:true,t0});}}
+  deps.sort((a,b)=>a.t0-b.t0);
+  const arr=act.map(a=>({a,end:a.t.start+a.off+a.t.prof[a.t.prof.length-1],last:a.p.s[a.p.s.length-1],used:false})).sort((x,y)=>x.end-y.end);
+  const shown=new Set(pats.map(p=>p.id));
+  for(const d of deps){
+    const bus=arr.find(x=>!x.used&&x.a.p.r===d.p.r&&near(x.last,d.p.s[0])&&x.end<=d.t0+60);
+    if(bus){ bus.used=true; plan.incoming.set(tripKey(d.p,d.t,d.off),bus.a); }
+    else if(shown.has(d.p.id)) plan.parked.push(d);
   }
-  return out;
+  return plan;
 }
+function waitingTrips(pats,c){ return upcomingPlan(pats,c).parked; }
 /* departures at stop s for patterns passing filter */
 function departuresAt(s,c,filter,opts={}){
   const out=[];
@@ -870,5 +873,7 @@ setInterval(()=>{
 setInterval(()=>{ if(!document.hidden) drawBuses(); },1000);
 let lastKey=madridNow().key;
 setInterval(()=>{const k=madridNow().key;if(k!==lastKey){lastKey=k;buildDays();render(true)}},60000);
+/* test hook for the timetable audit; inert unless the page is opened with #audit */
+if(location.hash==='#audit') window.__bb={P,S,R,ctx,activeTrips,upcomingPlan,dayTrips,departuresAt,tripKey,distM,pointAlong};
 })();
 </script>
