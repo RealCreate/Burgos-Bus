@@ -212,11 +212,9 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .parked .veh .body{opacity:.72}
 .parked .veh .arrow{opacity:.55}
 .bus.parked{opacity:.65}
-.veh .body{position:absolute;left:50%;top:50%;width:19px;height:40px;margin:-20px 0 0 -9.5px;border-radius:6px 6px 4px 4px;background:var(--c);box-shadow:0 0 0 2px var(--surface),0 3px 7px rgba(0,0,0,.45);pointer-events:auto;cursor:pointer;overflow:hidden}
-.veh .body::before{content:"";position:absolute;left:2px;right:2px;top:2px;height:6px;border-radius:4px 4px 1px 1px;background:rgba(10,20,30,.55)}
-.veh .body::after{content:"";position:absolute;left:3px;right:3px;bottom:2px;height:3px;border-radius:1px;background:rgba(10,20,30,.35)}
-.veh .arrow{position:absolute;left:50%;top:0;margin-left:-6px;width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-bottom:8px solid var(--muted);filter:drop-shadow(0 0 1.5px var(--surface))}
-.veh .num{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font:700 11px/1 var(--font-display);letter-spacing:-.02em;color:var(--t);font-variant-numeric:tabular-nums;white-space:nowrap;pointer-events:none}
+.veh .body{position:absolute;left:50%;top:50%;width:22.4px;height:48.2px;margin:-24.1px 0 0 -11.2px;overflow:visible;pointer-events:auto;cursor:pointer;filter:drop-shadow(0 2px 3px rgba(0,0,0,.35))}
+.veh .arrow{position:absolute;left:50%;top:-6px;margin-left:-6px;width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-bottom:8px solid var(--muted);filter:drop-shadow(0 0 1.5px var(--surface))}
+.veh .num{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font:700 11.5px/1 var(--font-display);letter-spacing:-.02em;color:var(--t);font-variant-numeric:tabular-nums;white-space:nowrap;pointer-events:none}
 @media (prefers-reduced-motion:reduce){.veh .rot{transition:none}}
 .pop h4{margin:0 0 2px;font:700 1rem var(--font-display)}
 .pop .code{font-size:.72rem;color:var(--muted)}
@@ -345,7 +343,7 @@ body{font:16px/1.4 var(--font-body);-webkit-font-smoothing:antialiased;letter-sp
 .lshead h3{font:650 1.15rem var(--font-display);letter-spacing:-.02em}
 .lslist .list{background:var(--surface)}
 /* map markers */
-.veh .body{box-shadow:0 0 0 2px #fff,0 3px 8px rgba(0,0,0,.4)}
+
 .selstop .dot{box-shadow:0 0 0 3px #fff,0 2px 10px rgba(0,0,0,.35)}
 @media (prefers-reduced-motion:reduce){
   .nav-push>*,.nav-pop>*{animation:navFade 160ms ease}
@@ -965,6 +963,9 @@ function headingAt(sh,d){
   const dy=b[0]-a[0], dx=(b[1]-a[1])*Math.cos(a[0]*Math.PI/180);
   return (Math.atan2(dx,dy)*180/Math.PI+360)%360;
 }
+/* A city bus seen from above, nose up: windscreen and mirrors at the front, roof air-con unit,
+   roof hatch, rear window. Body takes the line colour; the middle of the roof stays clear for the number. */
+const BUS_TOP='<svg class="body" viewBox="0 0 26 56" aria-hidden="true"><rect x=".6" y="10.5" width="3.2" height="4.2" rx="1.4" fill="#1d1d1f"/><rect x="22.2" y="10.5" width="3.2" height="4.2" rx="1.4" fill="#1d1d1f"/><path d="M8.5 2h9a6.5 6.5 0 0 1 6.5 6.5V51a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V8.5A6.5 6.5 0 0 1 8.5 2z" style="fill:var(--c)" stroke="#fff" stroke-width="1.6"/><path d="M8.6 3.6h8.8a5 5 0 0 1 5 4.6l.1 1.4q-9.5-2.4-19 0l.1-1.4a5 5 0 0 1 5-4.6z" fill="#0e1520" fill-opacity=".72"/><path d="M6.5 5.6q6.5-1.6 13 0" stroke="#fff" stroke-opacity=".45" stroke-width=".7" fill="none" stroke-linecap="round"/><rect x="3.3" y="12" width="1.3" height="37" rx=".6" fill="#000" fill-opacity=".22"/><rect x="21.4" y="12" width="1.3" height="37" rx=".6" fill="#000" fill-opacity=".22"/><rect x="6.6" y="11.5" width="12.8" height="7.2" rx="1.6" fill="#fff" fill-opacity=".3"/><path d="M8.6 13.6h8.8M8.6 15.1h8.8M8.6 16.6h8.8" stroke="#000" stroke-opacity=".18" stroke-width=".6"/><rect x="9" y="39.5" width="8" height="4.4" rx="1" fill="#000" fill-opacity=".16"/><rect x="5.2" y="50.2" width="15.6" height="2.2" rx="1" fill="#0e1520" fill-opacity=".45"/></svg>';
 const busMarkers=new Map(); /* one marker per trip, moved in place every second */
 /* Detail card for a tapped bus: whether it is moving, stopped at a stop or waiting to start,
    where it is heading, how far along the route it is and its next stops. Refreshed every second. */
@@ -1003,7 +1004,7 @@ function drawBuses(){
       const ll=pointAlong(a.p.sh,d), hd=headingAt(a.p.sh,d), x=R[a.p.r];
       let m=busMarkers.get(id);
       if(!m){
-        const icon=L.divIcon({className:'vehwrap',html:`<div class="veh" style="--c:${x.col};--t:${x.txt}"><span class="hit"></span><div class="rot"><span class="arrow"></span><span class="body"></span></div><span class="num">${esc(x.n)}</span></div>`,iconSize:[60,60],iconAnchor:[30,30]});
+        const icon=L.divIcon({className:'vehwrap',html:`<div class="veh" style="--c:${x.col};--t:${x.txt}"><span class="hit"></span><div class="rot"><span class="arrow"></span>${BUS_TOP}</div><span class="num">${esc(x.n)}</span></div>`,iconSize:[60,60],iconAnchor:[30,30]});
         m=L.marker(ll,{icon,keyboard:false,title:T('busTitle',{n:x.n,dest:a.p.h}),zIndexOffset:500}).addTo(busLayer);
         m.bindPopup(()=>{m._ph=busPopup(id);return m._ph},{maxWidth:280,minWidth:220,autoPanPaddingTopLeft:L.point(16,90)});
         busMarkers.set(id,m);
