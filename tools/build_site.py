@@ -3,7 +3,7 @@
 Usage:  python3 tools/build_site.py Google_transit.zip
 Get the zip from https://www.aytoburgos.es/GTFS/Google_transit.zip
 """
-import datetime, os, re, subprocess, sys, tempfile, zipfile
+import datetime, json, os, re, subprocess, sys, tempfile, zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -31,6 +31,14 @@ def main(zip_path):
 
     page = open(os.path.join(HERE, 'template.html'), encoding='utf-8').read()
     page = page.replace('__LEAFLET_CSS__', css).replace('__DATA__', data).replace('__STANDALONE__', 'true')
+    i18n = open(os.path.join(HERE, 'i18n.js'), encoding='utf-8').read()
+    i18n = json.loads(re.sub(r'^\s*/\*.*?\*/', '', i18n, flags=re.S))
+    keys = set(i18n['en'])
+    for code, d in i18n.items():
+        missing = keys - set(d)
+        if missing:
+            print('warning: %s is missing %s' % (code, ', '.join(sorted(missing))))
+    page = page.replace('__I18N__', json.dumps(i18n, ensure_ascii=False).replace('</', '<\\/'))
     page = page.replace('__BUILD__', datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=2))).strftime('%d %b %H:%M'))
     i = page.index('<div class="app"')
     out = HEAD + page[:i] + '</head>\n<body>\n' + page[i:] + '\n</body>\n</html>\n'
