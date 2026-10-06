@@ -156,7 +156,14 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .leaflet-container{background:var(--bg)!important;font-family:var(--font-body)!important}
 .leaflet-popup-content-wrapper,.leaflet-popup-tip{background:var(--surface)!important;color:var(--ink)!important}
 .leaflet-bar a{background:var(--surface)!important;color:var(--ink)!important;border-color:var(--rule)!important}
-.busmk{display:flex;align-items:center;justify-content:center;width:30px;height:20px;border-radius:6px;font:700 12px/1 var(--font-display);box-shadow:0 0 0 2px var(--surface),0 2px 5px rgba(0,0,0,.35)}
+/* bus marker: upright pill (bus + line number) with an arrow that orbits it to show the heading */
+.vehwrap{pointer-events:none!important}
+.veh{position:relative;width:60px;height:60px;pointer-events:none}
+.veh .pill{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:3px;padding:3px 7px 3px 5px;border-radius:999px;background:var(--c);color:var(--t);font:700 13px/1 var(--font-display);font-variant-numeric:tabular-nums;white-space:nowrap;box-shadow:0 0 0 2px var(--surface),0 2px 6px rgba(0,0,0,.4);pointer-events:auto;cursor:pointer}
+.veh .pill svg{width:16px;height:16px;flex:none}
+.veh .dir{position:absolute;inset:0;transition:transform .9s linear}
+.veh .dir i{position:absolute;left:50%;top:1px;transform:translateX(-50%);width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-bottom:10px solid var(--c);filter:drop-shadow(0 0 1.5px var(--surface)) drop-shadow(0 1px 2px rgba(0,0,0,.35))}
+@media (prefers-reduced-motion:reduce){.veh .dir{transition:none}}
 .pop h4{margin:0 0 2px;font:700 1rem var(--font-display)}
 .pop .code{font-size:.72rem;color:var(--muted)}
 .pop ul{list-style:none;margin:8px 0 6px;padding:0;display:flex;flex-direction:column;gap:4px}
@@ -611,16 +618,50 @@ function pointAlong(sh,dist){
   const f=(dist-cum[lo])/((cum[hi]-cum[lo])||1);
   return [pts[lo][0]+(pts[hi][0]-pts[lo][0])*f, pts[lo][1]+(pts[hi][1]-pts[lo][1])*f];
 }
+const BUS_ICON='<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M5 4.5C5 3.1 6.1 2 7.5 2h9C17.9 2 19 3.1 19 4.5V18c0 .6-.4 1-1 1h-.5v1.5a1 1 0 0 1-2 0V19h-7v1.5a1 1 0 0 1-2 0V19H6a1 1 0 0 1-1-1z"/><path fill="var(--c)" d="M7 5.5c0-.3.2-.5.5-.5h9c.3 0 .5.2.5.5V11c0 .3-.2.5-.5.5h-9A.5.5 0 0 1 7 11z"/><circle cx="8.5" cy="15" r="1.3" fill="var(--c)"/><circle cx="15.5" cy="15" r="1.3" fill="var(--c)"/></svg>';
+/* compass heading (degrees clockwise from north) of the route at distance d along a shape */
+function headingAt(sh,d){
+  const span=SH[sh].cum[SH[sh].cum.length-1];
+  let a=pointAlong(sh,Math.max(0,d-12)), b=pointAlong(sh,Math.min(span,d+12));
+  if(a[0]===b[0]&&a[1]===b[1]) return null;
+  const dy=b[0]-a[0], dx=(b[1]-a[1])*Math.cos(a[0]*Math.PI/180);
+  return (Math.atan2(dx,dy)*180/Math.PI+360)%360;
+}
+const busMarkers=new Map(); /* one marker per trip, moved in place every second */
+function busPopup(id){
+  const m=busMarkers.get(id); if(!m) return '';
+  const a=m._a, x=R[a.p.r];
+  return `<div class="pop"><h4>Line ${esc(x.n)} → ${esc(a.p.h)}</h4><div class="code">Next stop: ${esc(S[a.p.s[a.k+1]].name)} at ${hhmm(a.t.start+a.off+a.t.prof[a.k+1])}</div><div class="code" style="margin:4px 0 6px">Estimated position from the timetable</div><button data-line="${a.p.r}" data-dirp="${a.p.id}" data-keepdir>Open line →</button></div>`;
+}
 function drawBuses(){
-  if(!map) return; busLayer.clearLayers();
-  const c=ctx(); if(!c.live) return;
-  const sel=selection(); const shown=shownLines(); const pats=P.filter(p=>shown.has(p.r)||p.r===sel.r);
-  for(const a of activeTrips(pats,c)){
-    const d=a.p.dist[a.k]+(a.p.dist[a.k+1]-a.p.dist[a.k])*a.f;
-    const ll=pointAlong(a.p.sh,d); const x=R[a.p.r];
-    const icon=L.divIcon({className:'',html:`<span class="busmk" style="background:${x.col};color:${x.txt}">${esc(x.n)}</span>`,iconSize:[30,20],iconAnchor:[15,10]});
-    L.marker(ll,{icon,keyboard:false,title:`Line ${x.n} to ${a.p.h}`}).bindPopup(`<div class="pop"><h4>Line ${esc(x.n)} → ${esc(a.p.h)}</h4><div class="code">Next stop: ${esc(S[a.p.s[a.k+1]].name)} at ${hhmm(a.t.start+a.off+a.t.prof[a.k+1])}</div><button data-line="${a.p.r}" data-dirp="${a.p.id}" data-keepdir>Open line →</button></div>`).addTo(busLayer);
+  if(!map) return;
+  const c=ctx(); const seen=new Set();
+  if(c.live){
+    const sel=selection(); const shown=shownLines(); const pats=P.filter(p=>shown.has(p.r)||p.r===sel.r);
+    for(const a of activeTrips(pats,c)){
+      const id=a.p.id+':'+a.t.start+':'+a.off; seen.add(id);
+      const d=a.p.dist[a.k]+(a.p.dist[a.k+1]-a.p.dist[a.k])*a.f;
+      const ll=pointAlong(a.p.sh,d), hd=headingAt(a.p.sh,d), x=R[a.p.r];
+      let m=busMarkers.get(id);
+      if(!m){
+        const icon=L.divIcon({className:'vehwrap',html:`<div class="veh" style="--c:${x.col};--t:${x.txt}"><span class="dir"><i></i></span><span class="pill">${BUS_ICON}${esc(x.n)}</span></div>`,iconSize:[60,60],iconAnchor:[30,30]});
+        m=L.marker(ll,{icon,keyboard:false,title:`Line ${x.n} to ${a.p.h}`,zIndexOffset:500}).addTo(busLayer);
+        m.bindPopup(()=>busPopup(id),{maxWidth:260});
+        busMarkers.set(id,m);
+      } else m.setLatLng(ll);
+      m._a=a;
+      const el=m.getElement(), dir=el&&el.querySelector('.dir');
+      if(dir){
+        if(hd==null) dir.style.visibility='hidden';
+        else {
+          /* turn the short way round so the arrow never spins a full circle */
+          const prev=m._hd??hd; let delta=((hd-prev)%360+540)%360-180; const next=prev+delta;
+          m._hd=next; dir.style.visibility=''; dir.style.transform=`rotate(${next}deg)`;
+        }
+      }
+    }
   }
+  for(const [id,m] of busMarkers){ if(!seen.has(id)){ busLayer.removeLayer(m); busMarkers.delete(id); } }
 }
 
 /* ---------- day picker & clock ---------- */
@@ -676,8 +717,10 @@ window.addEventListener('resize',()=>map&&map.invalidateSize());
 setInterval(()=>{
   tickClock();
   const a=document.activeElement; if(a&&a.tagName==='INPUT') return;
-  drawBuses(); if(st.panel) render(true);
+  if(st.panel) render(true);
 },20000);
+/* move the buses every second; skip while the tab is hidden */
+setInterval(()=>{ if(!document.hidden) drawBuses(); },1000);
 let lastKey=madridNow().key;
 setInterval(()=>{const k=madridNow().key;if(k!==lastKey){lastKey=k;buildDays();render(true)}},60000);
 })();
