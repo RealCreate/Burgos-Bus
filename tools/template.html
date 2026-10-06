@@ -189,6 +189,18 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 @media (prefers-reduced-motion:reduce){.selstop .ring{animation:none;opacity:.5;transform:scale(.9)}}
 .veh{position:relative;width:60px;height:60px;pointer-events:none}
 .veh .rot{position:absolute;inset:0;transition:transform .9s linear}
+.veh .hit{position:absolute;inset:6px;border-radius:50%;pointer-events:auto;cursor:pointer}
+.busdet h4{display:flex;align-items:center;gap:6px}
+.bstat{display:flex;align-items:center;gap:7px;margin:8px 0 2px;font-size:.88rem}
+.bstat .sdot{width:9px;height:9px;border-radius:50%;flex:none;background:var(--muted)}
+.bstat.move .sdot{background:var(--live);animation:pulse 2s infinite}
+.bstat.stop .sdot{background:var(--star)}
+.bstat.wait .sdot{background:var(--muted)}
+.bline{font-size:.86rem;margin-bottom:4px}
+.busdet .bar{height:4px;border-radius:2px;background:var(--sunk);margin:5px 0 2px;overflow:hidden}
+.busdet .bar span{display:block;height:100%;background:var(--accent)}
+.busdet ul{margin:4px 0 8px}
+.busdet li .ph{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* waiting at the start of its next trip: same bus, slightly faded */
 .parked .veh .body{opacity:.72}
 .parked .veh .arrow{opacity:.55}
@@ -718,10 +730,31 @@ function headingAt(sh,d){
   return (Math.atan2(dx,dy)*180/Math.PI+360)%360;
 }
 const busMarkers=new Map(); /* one marker per trip, moved in place every second */
+/* Detail card for a tapped bus: whether it is moving, stopped at a stop or waiting to start,
+   where it is heading, how far along the route it is and its next stops. Refreshed every second. */
 function busPopup(id){
   const m=busMarkers.get(id); if(!m) return '';
-  const a=m._a, x=R[a.p.r];
-  return `<div class="pop"><h4>${T('busHead',{n:esc(x.n),dest:esc(a.p.h)})}</h4><div class="code">${a.wait?T('nextLeaves',{stop:esc(S[a.p.s[0]].name),time:hhmm(a.t.start+a.off)}):T('busNext',{stop:esc(S[a.p.s[a.k+1]].name),time:hhmm(a.t.start+a.off+a.t.prof[a.k+1])})}</div><div class="code" style="margin:4px 0 6px">${T('busEst')}</div><button data-line="${a.p.r}" data-dirp="${a.p.id}" data-keepdir>${T('openLine')}</button></div>`;
+  const a=m._a, x=R[a.p.r], p=a.p, c=ctx(), N=c.nowSec, t0=a.t.start+a.off;
+  const at=k=>t0+a.t.prof[k];
+  const cd=k=>{const r=rel(at(k)-N);return r?`${r} · ${hhmm(at(k))}`:hhmm(at(k))};
+  let state, line1, from;
+  if(a.wait){ state='wait'; line1=T('nextLeaves',{stop:esc(S[p.s[0]].name),time:hhmm(t0)}); from=1; }
+  else if(N-at(a.k)<=20){ state='stop'; line1=T('atStop',{stop:esc(S[p.s[a.k]].name)}); from=a.k+1; }
+  else { state='move'; line1=`${T('headingTo',{stop:esc(S[p.s[a.k+1]].name)})} · ${cd(a.k+1)}`; from=a.k+1; }
+  const label={move:'busMoving',stop:'busStopped',wait:'busWaiting'}[state];
+  const nextIdx=a.wait?0:(state==='stop'?a.k:a.k+1);
+  const ups=[]; for(let k=Math.max(from,state==='move'?a.k+2:from);k<p.s.length&&ups.length<3;k++) ups.push(k);
+  const last=p.s.length-1;
+  return `<div class="pop busdet">
+<h4><span class="badge sm" style="background:${x.col};color:${x.txt}">${esc(x.n)}</span> → ${esc(p.h)}</h4>
+<div class="bstat ${state}"><span class="sdot"></span><b>${T(label)}</b></div>
+<div class="bline">${line1}</div>
+<div class="code">${T('progress',{k:nextIdx+1,n:p.s.length})}</div>
+<div class="bar"><span style="width:${(100*(nextIdx)/Math.max(1,last)).toFixed(1)}%"></span></div>
+${ups.length?`<div class="code" style="margin-top:8px">${T('upcoming')}</div><ul>${ups.map(k=>`<li><span class="ph">${esc(S[p.s[k]].name)}</span><b>${hhmm(at(k))}</b></li>`).join('')}</ul>`:''}
+<div class="code">${T('endsAt',{stop:esc(S[p.s[last]].name),time:hhmm(at(last))})}</div>
+<div class="code" style="margin:6px 0">${T('busEst')}</div>
+<button data-line="${p.r}" data-dirp="${p.id}" data-keepdir>${T('openLine')}</button></div>`;
 }
 function drawBuses(){
   if(!map) return;
@@ -734,12 +767,13 @@ function drawBuses(){
       const ll=pointAlong(a.p.sh,d), hd=headingAt(a.p.sh,d), x=R[a.p.r];
       let m=busMarkers.get(id);
       if(!m){
-        const icon=L.divIcon({className:'vehwrap',html:`<div class="veh" style="--c:${x.col};--t:${x.txt}"><div class="rot"><span class="arrow"></span><span class="body"></span></div><span class="num">${esc(x.n)}</span></div>`,iconSize:[60,60],iconAnchor:[30,30]});
+        const icon=L.divIcon({className:'vehwrap',html:`<div class="veh" style="--c:${x.col};--t:${x.txt}"><span class="hit"></span><div class="rot"><span class="arrow"></span><span class="body"></span></div><span class="num">${esc(x.n)}</span></div>`,iconSize:[60,60],iconAnchor:[30,30]});
         m=L.marker(ll,{icon,keyboard:false,title:T('busTitle',{n:x.n,dest:a.p.h}),zIndexOffset:500}).addTo(busLayer);
-        m.bindPopup(()=>busPopup(id),{maxWidth:260});
+        m.bindPopup(()=>{m._ph=busPopup(id);return m._ph},{maxWidth:280,minWidth:220,autoPanPaddingTopLeft:L.point(16,90)});
         busMarkers.set(id,m);
       } else m.setLatLng(ll);
       m._a=a;
+      if(m.isPopupOpen()){const h=busPopup(id); if(h!==m._ph){m._ph=h; m.getPopup().setContent(h);}}
       const el=m.getElement(), dir=el&&el.querySelector('.rot');
       if(el) el.classList.toggle('parked',!!a.wait);
       if(dir){
