@@ -861,7 +861,7 @@ svg.leaflet-image-layer.leaflet-interactive path {
 (function(){
 "use strict";
 const STANDALONE = true;
-const BUILD = '06 Oct 11:09';
+const BUILD = '06 Oct 11:13';
 const CARTO_KEY = 'cb1_4bg4_1_4e4f55a8c87cd98973096db3';
 const D = JSON.parse(document.getElementById('gtfs').textContent);
 const $ = s => document.querySelector(s);
@@ -913,6 +913,14 @@ function saveFav(){try{localStorage.setItem('burgosbus-fav',JSON.stringify(fav))
 const R05=R.findIndex(r=>r.n==='05');
 let active=new Set(R05>=0?[R05]:[]);
 try{const v=JSON.parse(localStorage.getItem('burgosbus-active')||'null');if(Array.isArray(v))active=new Set(v.filter(i=>R[i]))}catch(e){}
+/* Lines drawn on the map: the ones switched on, plus (only while a stop's timetable is open)
+   every line serving that stop. Those extra lines are never written to `active`, so leaving the
+   stop view drops them again while lines switched on beforehand stay on. */
+function shownLines(){
+  const s=new Set(active); const top=st.stack[st.stack.length-1];
+  if(st.panel&&top&&top.kind==='stop') stopRoutes[top.s].forEach(r=>s.add(r));
+  return s;
+}
 function saveActive(){try{localStorage.setItem('burgosbus-active',JSON.stringify([...active]))}catch(e){}}
 function toggleActive(r){if(active.has(r))active.delete(r);else active.add(r);saveActive();render(true)}
 /* Starring adds or removes a Favourites block above the list. Keep the row you tapped
@@ -1168,7 +1176,8 @@ function initMap(){
 function syncMap(){
   if(!map) return;
   const sel=selection();
-  const key=sel.r+'|'+sel.pid+'|'+st.day+'|'+[...active].sort((a,b)=>a-b).join(',');
+  const shown=shownLines();
+  const key=sel.r+'|'+sel.pid+'|'+st.day+'|'+[...shown].sort((a,b)=>a-b).join(',');
   const chip=$('#selchip');
   if(sel.r>=0&&!st.panel){const x=R[sel.r];chip.hidden=false;chip.innerHTML=`<button data-openpanel="current" style="display:flex;align-items:center;gap:8px;min-width:0">${badge(sel.r)}<span class="nm">${esc(x.name)}</span></button><button class="x" data-clearsel aria-label="Show all lines"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>`}
   else chip.hidden=true;
@@ -1201,7 +1210,8 @@ function drawRoutes(sel){
   if(baseLayer) baseLayer.remove(); if(stopLayer) stopLayer.remove();
   baseLayer=L.layerGroup(); stopLayer=L.layerGroup();
   const r0=sel.r;
-  const order=R.map(r=>r.i).filter(i=>i!==r0&&active.has(i)); if(r0>=0) order.push(r0);
+  const shown=shownLines();
+  const order=R.map(r=>r.i).filter(i=>i!==r0&&shown.has(i)); if(r0>=0) order.push(r0);
   const selP=P.find(q=>q.id===sel.pid);
   for(const r of order){
     const seen=new Set();
@@ -1256,7 +1266,7 @@ function pointAlong(sh,dist){
 function drawBuses(){
   if(!map) return; busLayer.clearLayers();
   const c=ctx(); if(!c.live) return;
-  const sel=selection(); const pats=P.filter(p=>active.has(p.r)||p.r===sel.r);
+  const sel=selection(); const shown=shownLines(); const pats=P.filter(p=>shown.has(p.r)||p.r===sel.r);
   for(const a of activeTrips(pats,c)){
     const d=a.p.dist[a.k]+(a.p.dist[a.k+1]-a.p.dist[a.k])*a.f;
     const ll=pointAlong(a.p.sh,d); const x=R[a.p.r];
