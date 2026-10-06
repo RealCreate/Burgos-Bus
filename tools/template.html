@@ -1,4 +1,5 @@
 <title>Burgos Bus</title>
+<script>try{var t=localStorage.getItem('burgosbus-theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}</script>
 <style>
 /* Layout: the map is the app. Header, buttons, panels and pop-ups float over it as translucent
    material (Apple's approach); lists inside are iOS inset-grouped. Colours are iOS system colours. */
@@ -352,6 +353,38 @@ body{font:16px/1.4 var(--font-body);-webkit-font-smoothing:antialiased;letter-sp
   .panel,.langsheet{transition:opacity 160ms ease!important}
   .fab button:active,.chip:active,.linkbtn:active,.ibtn:active,.back:active,.langbtn:active,.seg button:active,.star:active{transform:none}
 }
+/* appearance switch: one glyph that morphs sun -> moon -> auto */
+.themewrap{position:relative;flex:none;display:flex}
+.themebtn{width:34px;height:34px;border-radius:999px;background:var(--sunk);color:var(--ink);display:grid;place-items:center;flex:none;
+  transition:transform 140ms var(--ease-out),background-color 200ms ease}
+.themebtn:active{transform:scale(.9)}
+.themebtn svg{width:20px;height:20px;overflow:visible;transition:transform 620ms cubic-bezier(.34,1.36,.64,1)}
+.themebtn .rays,.themebtn .core,.themebtn .bite,.themebtn .ring,.themebtn .half{transform-box:view-box;transform-origin:12px 12px;
+  transition:transform 560ms cubic-bezier(.34,1.36,.64,1),opacity 260ms ease}
+.themebtn[data-mode="light"] .core{transform:scale(.52)}
+.themebtn[data-mode="light"] .bite{transform:translate(9px,-9px)}
+.themebtn[data-mode="light"] .ring,.themebtn[data-mode="light"] .half{opacity:0;transform:scale(.5) rotate(-90deg)}
+.themebtn[data-mode="dark"] svg{transform:rotate(-25deg)}
+.themebtn[data-mode="dark"] .rays{opacity:0;transform:scale(.45) rotate(-75deg)}
+.themebtn[data-mode="dark"] .ring,.themebtn[data-mode="dark"] .half{opacity:0;transform:scale(.5) rotate(90deg)}
+.themebtn[data-mode="auto"] svg{transform:rotate(180deg)}
+.themebtn[data-mode="auto"] .rays{opacity:0;transform:scale(.6) rotate(60deg)}
+.themebtn[data-mode="auto"] .core{opacity:0;transform:scale(.3)}
+.themebtn[data-mode="auto"] .bite{transform:translate(9px,-9px)}
+.themetip{position:absolute;top:calc(100% + 10px);left:50%;z-index:2;white-space:nowrap;pointer-events:none;
+  padding:6px 12px;border-radius:999px;font:600 .8rem var(--font-body);color:var(--ink);
+  background:var(--glass);-webkit-backdrop-filter:blur(22px) saturate(180%);backdrop-filter:blur(22px) saturate(180%);
+  border:.5px solid var(--glass-edge);box-shadow:var(--float);
+  opacity:0;transform:translate(-50%,-6px) scale(.92);transform-origin:50% 0;transition:opacity 180ms ease,transform 260ms var(--ease-out)}
+.themetip.show{opacity:1;transform:translate(-50%,0) scale(1);transition:opacity 160ms ease,transform 420ms cubic-bezier(.34,1.4,.64,1)}
+@media (prefers-reduced-transparency:reduce){.themetip{background:var(--glass-solid);-webkit-backdrop-filter:none;backdrop-filter:none}}
+/* page cross-over: the new theme spreads out from the button (View Transitions) */
+::view-transition-old(root),::view-transition-new(root){animation:none;mix-blend-mode:normal}
+::view-transition-new(root){z-index:9999}
+@media (max-width:420px){.top{gap:8px}.brand svg{display:none}}
+@media (prefers-reduced-motion:reduce){
+  .themebtn svg,.themebtn .rays,.themebtn .core,.themebtn .bite,.themebtn .ring,.themebtn .half{transition:opacity 150ms ease}
+  .themetip,.themetip.show{transition:opacity 150ms ease;transform:translate(-50%,0)}}
 </style>
 
 <div class="app" id="app">
@@ -362,6 +395,7 @@ body{font:16px/1.4 var(--font-body);-webkit-font-smoothing:antialiased;letter-sp
     </div>
     <label for="day" hidden>Day</label>
     <select id="day" class="day" aria-label="Day to show" data-i18n-aria="dayAria"></select>
+    <div class="themewrap"><button id="themebtn" class="themebtn" data-mode="auto" aria-label="Appearance"><svg viewBox="0 0 24 24" aria-hidden="true"><defs><mask id="tb-bite" maskUnits="userSpaceOnUse" x="-6" y="-6" width="36" height="36"><rect x="-6" y="-6" width="36" height="36" fill="#fff"/><circle class="bite" cx="17" cy="7" r="6.8" fill="#000"/></mask></defs><g class="rays" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1.8v2.4M12 19.8v2.4M1.8 12h2.4M19.8 12h2.4M4.8 4.8l1.7 1.7M17.5 17.5l1.7 1.7M4.8 19.2l1.7-1.7M17.5 6.5l1.7-1.7"/></g><g mask="url(#tb-bite)"><circle class="core" cx="12" cy="12" r="8" fill="currentColor"/></g><circle class="ring" cx="12" cy="12" r="7.6" fill="none" stroke="currentColor" stroke-width="1.9"/><path class="half" d="M12 4.4a7.6 7.6 0 0 1 0 15.2z" fill="currentColor"/></svg></button><span class="themetip" id="themetip" aria-live="polite"></span></div>
     <button id="langbtn" class="langbtn" aria-haspopup="dialog" aria-label="Language"></button>
   </header>
   <div class="stage">
@@ -403,6 +437,8 @@ const I18N = __I18N__;
 const MAIN_LANGS=['es','ca','eu','gl','en'];
 let lang='es';
 try{const v=localStorage.getItem('burgosbus-lang');if(v&&I18N[v])lang=v}catch(e){}
+let themeMode='auto'; try{const v=localStorage.getItem('burgosbus-theme');if(v==='light'||v==='dark')themeMode=v}catch(e){}
+let themeChanged=()=>Promise.resolve(), tipTimer=0;
 function T(k,v){let s=(I18N[lang]&&I18N[lang][k])??I18N.en[k]??k;if(v)s=s.replace(/\{(\w+)\}/g,(m,n)=>v[n]??m);return s}
 const flagHtml=c=>{const f=I18N[c].flag;return f.length<=3&&/^[a-z]+$/.test(f)?`<span class="flag flag-${f}" aria-hidden="true"></span>`:`<span class="flag" aria-hidden="true">${f}</span>`};
 const $ = s => document.querySelector(s);
@@ -835,12 +871,19 @@ function initMap(){
   if(STANDALONE){
     const isDark=()=>document.documentElement.dataset.theme==='dark'||(document.documentElement.dataset.theme!=='light'&&matchMedia('(prefers-color-scheme: dark)').matches);
     let tiles=null;
-    const setTiles=()=>{ if(tiles) tiles.remove();
-      tiles=L.tileLayer(`https://basemaps.cartocdn.com/rastertiles/${isDark()?'dark_all':'light_all'}/{z}/{x}/{y}{r}.png?key=${CARTO_KEY}`,{maxZoom:19,attribution:'© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>'}).addTo(map); };
-    setTiles();
+    const mkTiles=()=>L.tileLayer(`https://basemaps.cartocdn.com/rastertiles/${isDark()?'dark_all':'light_all'}/{z}/{x}/{y}{r}.png?key=${CARTO_KEY}`,{maxZoom:19,attribution:'© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>'}).addTo(map);
+    tiles=mkTiles();
+    /* keep the old tiles underneath until the new set has loaded, so the map never flashes blank */
+    themeChanged=()=>new Promise(res=>{
+      const old=tiles, nl=mkTiles(); tiles=nl; let done=false;
+      const drop=()=>{ if(old&&map.hasLayer(old)&&tiles!==old) map.removeLayer(old); };
+      const fin=()=>{ if(done) return; done=true; drop(); res(); };
+      nl.once('load',fin); setTimeout(()=>{ if(!done){done=true;res();} },450); setTimeout(drop,4000);
+      drawnKey=null; markedStop=undefined; syncMap();
+    });
     const mq=matchMedia('(prefers-color-scheme: dark)');
-    const onTheme=()=>{ setTiles(); drawnKey=null; markedStop=undefined; syncMap(); };
-    if(mq.addEventListener) mq.addEventListener('change',onTheme); else if(mq.addListener) mq.addListener(onTheme);
+    const onSys=()=>{ if(themeMode==='auto') themeChanged(); };
+    if(mq.addEventListener) mq.addEventListener('change',onSys); else if(mq.addListener) mq.addListener(onSys);
     if(navigator.geolocation){
       const Loc=L.Control.extend({options:{position:'topright'},onAdd(){const d=L.DomUtil.create('div','leaflet-bar');d.innerHTML='<a href="#" class="locate" role="button" aria-label="'+T('locate')+'" title="'+T('locate')+'"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></a>';L.DomEvent.disableClickPropagation(d);d.firstChild.addEventListener('click',e=>{e.preventDefault();locateMe()});return d}});
       map.addControl(new Loc());
@@ -1036,6 +1079,29 @@ function buildDays(){
 }
 function tickClock(){const n=madridNow();$('#clock').textContent=T('sub',{time:hhmm(n.sec)})}
 
+/* ---------- appearance ---------- */
+const THEME_NEXT={auto:'light',light:'dark',dark:'auto'};
+const themeName=m=>T(m==='auto'?'themeAuto':m==='light'?'themeLight':'themeDark');
+const sysDark=()=>matchMedia('(prefers-color-scheme: dark)').matches;
+const darkFor=m=>m==='dark'||(m==='auto'&&sysDark());
+function paintThemeBtn(){const b=$('#themebtn'); b.dataset.mode=themeMode; b.setAttribute('aria-label',`${T('theme')}: ${themeName(themeMode)}`); b.title=T('theme');}
+function setTheme(m){
+  const before=darkFor(themeMode), after=darkFor(m), root=document.documentElement;
+  const apply=()=>{ themeMode=m; if(m==='auto') delete root.dataset.theme; else root.dataset.theme=m;
+    try{ if(m==='auto') localStorage.removeItem('burgosbus-theme'); else localStorage.setItem('burgosbus-theme',m);}catch(e){}
+    paintThemeBtn(); return before!==after?themeChanged():Promise.resolve(); };
+  const tip=$('#themetip'); tip.textContent=themeName(m); tip.classList.remove('show'); void tip.offsetWidth; tip.classList.add('show');
+  clearTimeout(tipTimer); tipTimer=setTimeout(()=>tip.classList.remove('show'),1400);
+  if(before===after||reduceMotion||!document.startViewTransition){ apply(); return; }
+  const r=$('#themebtn').getBoundingClientRect(), x=r.left+r.width/2, y=r.top+r.height/2;
+  const end=Math.hypot(Math.max(x,innerWidth-x),Math.max(y,innerHeight-y));
+  try{
+    const vt=document.startViewTransition(apply);
+    vt.ready.then(()=>root.animate({clipPath:[`circle(0px at ${x}px ${y}px)`,`circle(${end}px at ${x}px ${y}px)`]},
+      {duration:620,easing:'cubic-bezier(.32,.72,0,1)',pseudoElement:'::view-transition-new(root)'})).catch(()=>{});
+  }catch(e){ apply(); }
+}
+
 /* ---------- language ---------- */
 function applyStatic(){
   document.documentElement.lang=lang;
@@ -1044,6 +1110,7 @@ function applyStatic(){
   const lb=$('#langbtn'); lb.innerHTML=`${flagHtml(lang)}<span>${lang.toUpperCase()}</span>`; lb.setAttribute('aria-label',`${T('language')}: ${I18N[lang].name}`);
   $('#langtitle').textContent=T('language'); $('#q-lang').placeholder=T('searchLang'); $('#langclose').setAttribute('aria-label',T('close'));
   document.querySelectorAll('.locate').forEach(a=>{a.title=T('locate');a.setAttribute('aria-label',T('locate'))});
+  paintThemeBtn();
 }
 function langList(){
   const q=$('#q-lang').value.trim().toLowerCase();
@@ -1096,6 +1163,7 @@ document.addEventListener('click',e=>{
   if(t.id==='close-panel'){st.panel=false;st.full=false;render();return}
   if(t.id==='grow'){st.full=!st.full;render(true);return}
   if(t.hasAttribute('data-clearsel')){st.stack=[];render();return}
+  if(t.id==='themebtn'){setTheme(THEME_NEXT[themeMode]);return}
   if(t.id==='langbtn'){openLang(true);return}
   if(t.id==='langclose'){openLang(false);return}
   if(t.dataset.lang){setLang(t.dataset.lang);openLang(false);return}
