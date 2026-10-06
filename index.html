@@ -912,7 +912,21 @@ let active=new Set(R05>=0?[R05]:[]);
 try{const v=JSON.parse(localStorage.getItem('burgosbus-active')||'null');if(Array.isArray(v))active=new Set(v.filter(i=>R[i]))}catch(e){}
 function saveActive(){try{localStorage.setItem('burgosbus-active',JSON.stringify([...active]))}catch(e){}}
 function toggleActive(r){if(active.has(r))active.delete(r);else active.add(r);saveActive();render(true)}
-function toggleFav(kind,id){const a=fav[kind];const i=a.indexOf(id);if(i>=0)a.splice(i,1);else a.push(id);saveFav();render()}
+/* Starring adds or removes a Favourites block above the list. Keep the row you tapped
+   exactly where it was on screen so the list never jumps under your finger. */
+function sectionOf(el){const l=el.closest('.list');const e=l&&l.previousElementSibling;return e&&e.classList.contains('eyebrow')?e.textContent.replace(/[\d·]/g,'').trim():''}
+function toggleFav(kind,id,btn){
+  const a=fav[kind];const i=a.indexOf(id);if(i>=0)a.splice(i,1);else a.push(id);saveFav();
+  const sel=`[data-fav-${kind==='lines'?'line':'stop'}="${id}"]`;
+  const sec=btn?sectionOf(btn):null, y0=btn?btn.getBoundingClientRect().top:0;
+  const allHead=()=>[...view.querySelectorAll('.eyebrow')].find(e=>/^All/.test(e.textContent));
+  const h0=allHead(), hy0=h0?h0.getBoundingClientRect().top:0;
+  render(true);
+  if(!btn) return;
+  const same=[...view.querySelectorAll(sel)].find(b=>sectionOf(b)===sec);
+  if(same) view.scrollTop+=same.getBoundingClientRect().top-y0;
+  else { const h1=allHead(); if(h1&&h0) view.scrollTop+=h1.getBoundingClientRect().top-hy0; }
+}
 
 function ctx(){
   const now=madridNow();
@@ -1272,8 +1286,8 @@ document.addEventListener('click',e=>{
   const t=e.target.closest('button,a'); if(!t) return;
   if(t.dataset.tab){st.tab=t.dataset.tab;st.stack=[];render();view.scrollTop=0;return}
   if(t.hasAttribute('data-back')){st.stack.pop();render();return}
-  if(t.dataset.favLine!=null){toggleFav('lines',+t.dataset.favLine);return}
-  if(t.dataset.favStop!=null){toggleFav('stops',+t.dataset.favStop);return}
+  if(t.dataset.favLine!=null){toggleFav('lines',+t.dataset.favLine,t);return}
+  if(t.dataset.favStop!=null){toggleFav('stops',+t.dataset.favStop,t);return}
   if(t.dataset.openpanel!=null){const w=t.dataset.openpanel;st.panel=true;if(w!=='current'){st.tab=w;st.stack=[]}render();view.scrollTop=0;return}
   if(t.id==='close-panel'){st.panel=false;st.full=false;render();return}
   if(t.id==='grow'){st.full=!st.full;render(true);return}
