@@ -164,14 +164,17 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .leaflet-container{background:var(--bg)!important;font-family:var(--font-body)!important}
 .leaflet-popup-content-wrapper,.leaflet-popup-tip{background:var(--surface)!important;color:var(--ink)!important}
 .leaflet-bar a{background:var(--surface)!important;color:var(--ink)!important;border-color:var(--rule)!important}
-/* bus marker: upright pill (bus + line number) with an arrow that orbits it to show the heading */
+/* bus marker: a bus seen from above, turned to face its direction of travel.
+   The body and the grey arrow in front of it rotate; the line number on the roof stays upright. */
 .vehwrap{pointer-events:none!important}
 .veh{position:relative;width:60px;height:60px;pointer-events:none}
-.veh .pill{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:3px;padding:3px 7px 3px 5px;border-radius:999px;background:var(--c);color:var(--t);font:700 13px/1 var(--font-display);font-variant-numeric:tabular-nums;white-space:nowrap;box-shadow:0 0 0 2px var(--surface),0 2px 6px rgba(0,0,0,.4);pointer-events:auto;cursor:pointer}
-.veh .pill svg{width:16px;height:16px;flex:none}
-.veh .dir{position:absolute;inset:0;transition:transform .9s linear}
-.veh .dir i{position:absolute;left:50%;top:1px;transform:translateX(-50%);width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-bottom:10px solid var(--c);filter:drop-shadow(0 0 1.5px var(--surface)) drop-shadow(0 1px 2px rgba(0,0,0,.35))}
-@media (prefers-reduced-motion:reduce){.veh .dir{transition:none}}
+.veh .rot{position:absolute;inset:0;transition:transform .9s linear}
+.veh .body{position:absolute;left:50%;top:50%;width:19px;height:40px;margin:-20px 0 0 -9.5px;border-radius:6px 6px 4px 4px;background:var(--c);box-shadow:0 0 0 2px var(--surface),0 3px 7px rgba(0,0,0,.45);pointer-events:auto;cursor:pointer;overflow:hidden}
+.veh .body::before{content:"";position:absolute;left:2px;right:2px;top:2px;height:6px;border-radius:4px 4px 1px 1px;background:rgba(10,20,30,.55)}
+.veh .body::after{content:"";position:absolute;left:3px;right:3px;bottom:2px;height:3px;border-radius:1px;background:rgba(10,20,30,.35)}
+.veh .arrow{position:absolute;left:50%;top:0;margin-left:-6px;width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-bottom:8px solid var(--muted);filter:drop-shadow(0 0 1.5px var(--surface))}
+.veh .num{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font:700 11px/1 var(--font-display);letter-spacing:-.02em;color:var(--t);font-variant-numeric:tabular-nums;white-space:nowrap;pointer-events:none}
+@media (prefers-reduced-motion:reduce){.veh .rot{transition:none}}
 .pop h4{margin:0 0 2px;font:700 1rem var(--font-display)}
 .pop .code{font-size:.72rem;color:var(--muted)}
 .pop ul{list-style:none;margin:8px 0 6px;padding:0;display:flex;flex-direction:column;gap:4px}
@@ -868,7 +871,7 @@ svg.leaflet-image-layer.leaflet-interactive path {
 (function(){
 "use strict";
 const STANDALONE = true;
-const BUILD = '06 Oct 11:26';
+const BUILD = '06 Oct 11:30';
 const CARTO_KEY = 'cb1_4bg4_1_4e4f55a8c87cd98973096db3';
 const D = JSON.parse(document.getElementById('gtfs').textContent);
 const $ = s => document.querySelector(s);
@@ -1296,19 +1299,19 @@ function drawBuses(){
       const ll=pointAlong(a.p.sh,d), hd=headingAt(a.p.sh,d), x=R[a.p.r];
       let m=busMarkers.get(id);
       if(!m){
-        const icon=L.divIcon({className:'vehwrap',html:`<div class="veh" style="--c:${x.col};--t:${x.txt}"><span class="dir"><i></i></span><span class="pill">${BUS_ICON}${esc(x.n)}</span></div>`,iconSize:[60,60],iconAnchor:[30,30]});
+        const icon=L.divIcon({className:'vehwrap',html:`<div class="veh" style="--c:${x.col};--t:${x.txt}"><div class="rot"><span class="arrow"></span><span class="body"></span></div><span class="num">${esc(x.n)}</span></div>`,iconSize:[60,60],iconAnchor:[30,30]});
         m=L.marker(ll,{icon,keyboard:false,title:`Line ${x.n} to ${a.p.h}`,zIndexOffset:500}).addTo(busLayer);
         m.bindPopup(()=>busPopup(id),{maxWidth:260});
         busMarkers.set(id,m);
       } else m.setLatLng(ll);
       m._a=a;
-      const el=m.getElement(), dir=el&&el.querySelector('.dir');
+      const el=m.getElement(), dir=el&&el.querySelector('.rot');
       if(dir){
-        if(hd==null) dir.style.visibility='hidden';
+        if(hd==null) dir.querySelector('.arrow').style.visibility='hidden';
         else {
           /* turn the short way round so the arrow never spins a full circle */
           const prev=m._hd??hd; let delta=((hd-prev)%360+540)%360-180; const next=prev+delta;
-          m._hd=next; dir.style.visibility=''; dir.style.transform=`rotate(${next}deg)`;
+          m._hd=next; dir.querySelector('.arrow').style.visibility=''; dir.style.transform=`rotate(${next}deg)`;
         }
       }
     }
