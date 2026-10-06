@@ -1103,7 +1103,8 @@ function fitPad(){
 }
 function initMap(){
   if(typeof L==='undefined'){ $('#map').innerHTML='<div class="empty">The map could not load. Check your connection and reopen the page.</div>'; return; }
-  map=L.map('map',{zoomControl:false,attributionControl:STANDALONE,preferCanvas:true,zoomSnap:.5});
+  const coarse=matchMedia('(pointer:coarse)').matches;
+  map=L.map('map',{zoomControl:false,attributionControl:STANDALONE,preferCanvas:true,renderer:L.canvas({tolerance:coarse?14:9}),zoomSnap:.5});
   L.control.zoom({position:'topright'}).addTo(map);
   const b=L.latLngBounds(S.filter((_,i)=>stopRefs[i].length).map(s=>[s.lat,s.lon]));
   map.fitBounds(b.pad(-.12));
@@ -1142,6 +1143,14 @@ function focusStop(i){
   if(!map) return; const s=S[i];
   map.fitBounds(L.latLng(s.lat,s.lon).toBounds(500),Object.assign({maxZoom:17},fitPad()));
 }
+const reduceMotion=matchMedia('(prefers-reduced-motion: reduce)').matches;
+function growStop(m,target){
+  if(m._anim) cancelAnimationFrame(m._anim);
+  const from=m.getRadius(), t0=performance.now(), dur=160;
+  if(reduceMotion){m.setRadius(target);return}
+  const step=now=>{const k=Math.min(1,(now-t0)/dur), e=1-Math.pow(1-k,3);m.setRadius(from+(target-from)*e);if(k<1)m._anim=requestAnimationFrame(step);else m._anim=null};
+  m._anim=requestAnimationFrame(step);
+}
 function drawRoutes(sel){
   if(baseLayer) baseLayer.remove(); if(stopLayer) stopLayer.remove();
   baseLayer=L.layerGroup(); stopLayer=L.layerGroup();
@@ -1161,8 +1170,11 @@ function drawRoutes(sel){
   const css=getComputedStyle(document.documentElement);
   const surf=css.getPropertyValue('--surface').trim()||'#fff', ink=css.getPropertyValue('--ink').trim()||'#000';
   for(const i of new Set(stopsShown)){
-    const m=L.circleMarker([S[i].lat,S[i].lon],{radius:r0>=0?6:4,color:r0>=0?R[r0].col:ink,weight:r0>=0?3:1.5,fillColor:surf,fillOpacity:1});
+    const base=r0>=0?6:4.5;
+    const m=L.circleMarker([S[i].lat,S[i].lon],{radius:base,color:r0>=0?R[r0].col:ink,weight:r0>=0?3:1.5,fillColor:surf,fillOpacity:1});
     m.on('click',()=>{m.bindPopup(stopPopup(i),{maxWidth:270}).openPopup()});
+    m.on('mouseover',()=>growStop(m,base*1.8));
+    m.on('mouseout',()=>growStop(m,base));
     m.addTo(stopLayer);
   }
   baseLayer.addTo(map); stopLayer.addTo(map);
