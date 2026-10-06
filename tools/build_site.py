@@ -3,7 +3,7 @@
 Usage:  python3 tools/build_site.py Google_transit.zip
 Get the zip from https://www.aytoburgos.es/GTFS/Google_transit.zip
 """
-import os, re, subprocess, sys, tempfile, zipfile
+import datetime, os, re, subprocess, sys, tempfile, zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -31,6 +31,7 @@ def main(zip_path):
 
     page = open(os.path.join(HERE, 'template.html'), encoding='utf-8').read()
     page = page.replace('__LEAFLET_CSS__', css).replace('__DATA__', data).replace('__STANDALONE__', 'true')
+    page = page.replace('__BUILD__', datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=2))).strftime('%d %b %H:%M'))
     i = page.index('<div class="app"')
     out = HEAD + page[:i] + '</head>\n<body>\n' + page[i:] + '\n</body>\n</html>\n'
     with open(os.path.join(ROOT, 'index.html'), 'w', encoding='utf-8') as f:

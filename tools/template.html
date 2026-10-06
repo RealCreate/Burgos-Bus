@@ -209,6 +209,7 @@ __LEAFLET_CSS__
 (function(){
 "use strict";
 const STANDALONE = __STANDALONE__;
+const BUILD = '__BUILD__';
 const CARTO_KEY = 'cb1_4bg4_1_4e4f55a8c87cd98973096db3';
 const D = JSON.parse(document.getElementById('gtfs').textContent);
 const $ = s => document.querySelector(s);
@@ -380,7 +381,7 @@ function linesView(){
   if(favs.length) h+=`<div class="eyebrow">Favourites</div><div class="list">${favs.map(r=>lineRow(r,c)).join('')}</div>`;
   h+=`<div class="eyebrow">All lines</div><div class="list">${day.map(r=>lineRow(r,c)).join('')||'<div class="empty">No lines match.</div>'}</div>`;
   if(night.length) h+=`<div class="eyebrow">Night buses (Búho)</div><div class="list">${night.map(r=>lineRow(r,c)).join('')}</div>`;
-  h+=`<p class="note">Timetables from the Ayuntamiento de Burgos open data feed, valid ${longKey(dataKeys[0])} – ${longKey(dataKeys[dataKeys.length-1])}. Bus positions are estimated from the timetable, not live GPS.</p></div>`;
+  h+=`<p class="note">Timetables from the Ayuntamiento de Burgos open data feed, valid ${longKey(dataKeys[0])} – ${longKey(dataKeys[dataKeys.length-1])}. Bus positions are estimated from the timetable, not live GPS.</p><p class="note" style="margin-top:6px">Site version ${esc(BUILD)}</p></div>`;
   return h;
 }
 
