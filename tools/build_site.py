@@ -39,6 +39,7 @@ def main(zip_path):
         if missing:
             print('warning: %s is missing %s' % (code, ', '.join(sorted(missing))))
     page = page.replace('__I18N__', json.dumps(i18n, ensure_ascii=False).replace('</', '<\\/'))
+    page = page.replace('__BUILD_ID__', str(int(datetime.datetime.now().timestamp())))
     page = page.replace('__BUILD__', datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=2))).strftime('%d %b %H:%M'))
     i = page.index('<div class="app"')
     out = HEAD + page[:i] + '</head>\n<body>\n' + page[i:] + '\n</body>\n</html>\n'

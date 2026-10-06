@@ -255,6 +255,7 @@ __LEAFLET_CSS__
 "use strict";
 const STANDALONE = __STANDALONE__;
 const BUILD = '__BUILD__';
+const BUILD_ID = '__BUILD_ID__';
 const CARTO_KEY = 'cb1_4bg4_1_4e4f55a8c87cd98973096db3';
 const D = JSON.parse(document.getElementById('gtfs').textContent);
 const I18N = __I18N__;
@@ -809,6 +810,23 @@ $('#day').addEventListener('change',e=>{st.day=+e.target.value;render(true);draw
 
 applyStatic(); buildDays(); tickClock(); initMap(); applyStatic(); render();
 $('#langback').addEventListener('click',()=>openLang(false));
+/* Browsers keep a cached copy of the page for up to 10 minutes. Ask the server for the
+   current page (bypassing the cache) and, if it was built after this copy, reload onto it. */
+async function checkUpdate(){
+  try{
+    const r=await fetch(location.pathname+'?check='+Date.now(),{cache:'no-store'});
+    if(!r.ok) return;
+    const m=(await r.text()).match(/const BUILD_ID = '(\d+)'/);
+    if(!m||+m[1]<=+BUILD_ID) return;
+    let tried=null; try{tried=sessionStorage.getItem('burgosbus-upd')}catch(e){}
+    if(tried===m[1]) return;   /* already reloaded for this build once; don't loop */
+    try{sessionStorage.setItem('burgosbus-upd',m[1])}catch(e){}
+    location.replace(location.pathname+'?v='+m[1]+location.hash);
+  }catch(e){}
+}
+setTimeout(checkUpdate,1500);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkUpdate()});
+setInterval(checkUpdate,5*60*1000);
 $('#q-lang').addEventListener('input',langList);
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#langsheet').hidden)openLang(false)});
 window.addEventListener('resize',()=>map&&map.invalidateSize());
