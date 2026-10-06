@@ -448,7 +448,7 @@ const CARTO_KEY = 'cb1_4bg4_1_4e4f55a8c87cd98973096db3';
 const D = JSON.parse(document.getElementById('gtfs').textContent);
 const I18N = __I18N__;
 /* Spanish first, then Spain's other official languages, then English; everything else is alphabetical below */
-const MAIN_LANGS=['es','ca','eu','gl','en'];
+const MAIN_LANGS=['es','ca','eu','gl','en','pt','fr'];
 let lang='es';
 try{const v=localStorage.getItem('burgosbus-lang');if(v&&I18N[v])lang=v}catch(e){}
 let themeMode='auto'; try{const v=localStorage.getItem('burgosbus-theme');if(v==='light'||v==='dark')themeMode=v}catch(e){}
