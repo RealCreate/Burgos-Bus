@@ -2,7 +2,7 @@
 
 A phone-friendly guide to the Burgos urban bus network (SMyT): every line in its official colour, each direction with all its stops, scheduled times at every stop, departure boards, and a street map of the routes.
 
-Live site: https://realcreate.github.io/burgos-bus/
+Live site: https://realcreate.github.io/Burgos-Bus/
 
 ## What it does
 
