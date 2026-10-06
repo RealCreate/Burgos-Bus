@@ -189,6 +189,10 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 @media (prefers-reduced-motion:reduce){.selstop .ring{animation:none;opacity:.5;transform:scale(.9)}}
 .veh{position:relative;width:60px;height:60px;pointer-events:none}
 .veh .rot{position:absolute;inset:0;transition:transform .9s linear}
+/* waiting at the start of its next trip: same bus, slightly faded */
+.parked .veh .body{opacity:.72}
+.parked .veh .arrow{opacity:.55}
+.bus.parked{opacity:.65}
 .veh .body{position:absolute;left:50%;top:50%;width:19px;height:40px;margin:-20px 0 0 -9.5px;border-radius:6px 6px 4px 4px;background:var(--c);box-shadow:0 0 0 2px var(--surface),0 3px 7px rgba(0,0,0,.45);pointer-events:auto;cursor:pointer;overflow:hidden}
 .veh .body::before{content:"";position:absolute;left:2px;right:2px;top:2px;height:6px;border-radius:4px 4px 1px 1px;background:rgba(10,20,30,.55)}
 .veh .body::after{content:"";position:absolute;left:3px;right:3px;bottom:2px;height:3px;border-radius:1px;background:rgba(10,20,30,.35)}
@@ -365,6 +369,32 @@ function activeTrips(pats,c){
   }}
   return out;
 }
+/* Buses parked at the start of their next trip. Between trips a bus waits at the end of the line
+   (C2 sits at F. Politecnica for ~5 min), so it is shown there for up to WAIT_MAX before it leaves,
+   unless the bus that will run that trip is still driving in (an active trip of the same line
+   ending near that stop), and only the earliest departure per line and stop area. */
+const WAIT_MAX=12*60;
+function waitingTrips(pats,c){
+  if(!c.live) return [];
+  const N=c.nowSec, routes=new Set(pats.map(p=>p.r));
+  const act=activeTrips(P.filter(p=>routes.has(p.r)),c);
+  const near=(a,b)=>distM(S[a].lat,S[a].lon,S[b].lat,S[b].lon)<200;
+  const cands=[];
+  for(const p of pats){for(const {t,off} of dayTrips(p,c)){
+    const t0=t.start+off; if(t0<=N||t0-N>WAIT_MAX) continue;
+    cands.push({p,t,off,k:0,f:0,wait:true,t0});
+  }}
+  cands.sort((a,b)=>a.t0-b.t0);
+  const out=[], used=[];
+  for(const w of cands){
+    const s0=w.p.s[0];
+    if(used.some(u=>u.r===w.p.r&&near(u.s,s0))) continue;   /* one parked bus per line per stop */
+    used.push({r:w.p.r,s:s0});
+    const incoming=act.some(a=>a.p.r===w.p.r&&near(a.p.s[a.p.s.length-1],s0)&&a.t.start+a.off+a.t.prof[a.t.prof.length-1]<=w.t0+60);
+    if(!incoming) out.push(w);
+  }
+  return out;
+}
 /* departures at stop s for patterns passing filter */
 function departuresAt(s,c,filter,opts={}){
   const out=[];
@@ -474,7 +504,7 @@ function lineView(v){
 
   /* place buses on this pattern */
   const busAt={};
-  for(const a of act){
+  for(const a of act.concat(waitingTrips(dirPats,c))){
     const prev=a.p.s[a.k], next=a.p.s[a.k+1];
     let j=-1;
     for(let i=0;i<p.s.length-1;i++){if(p.s[i]===prev&&p.s[i+1]===next){j=i;break}}
@@ -505,7 +535,7 @@ function lineView(v){
       full=`<div class="full">${Object.keys(byH).sort((a,b)=>a-b).map(hh=>`<div class="hr"><b>${String(hh%24).padStart(2,'0')}</b><span>${byH[hh].map(d=>`<span class="${c.live&&d.tm<c.nowSec?'past':''}">${String(Math.floor(d.tm%3600/60)).padStart(2,'0')}${d.p.h!==p.h?`<i>*</i>`:''}</span>`).join(' ')}</span></div>`).join('')||`<div class="empty">${T('noBusesDay')}</div>`}${all.some(d=>d.p.h!==p.h)?`<div class="note" style="margin-top:6px">${T('otherTerminus')}</div>`:''}<button class="linkbtn" data-stop="${s}">${T('allDeps')}</button></div>`;
     }
     let buses='';
-    (busAt[i]||[]).forEach(a=>{buses+=`<span class="bus" style="top:calc(21px + ${(a.f*100).toFixed(1)}%)" title="${T('between',{a:esc(S[p.s[i]].name),b:esc(S[p.s[i+1]]?.name||'')})}">${BUS_SVG}</span>`});
+    (busAt[i]||[]).forEach(a=>{buses+=`<span class="bus${a.wait?' parked':''}" style="top:calc(21px + ${(a.f*100).toFixed(1)}%)" title="${T('between',{a:esc(S[p.s[i]].name),b:esc(S[p.s[i+1]]?.name||'')})}">${BUS_SVG}</span>`});
     h+=`<div class="stop ${i===0?'first':''} ${last?'last':''} ${v.hl===s?'hl':''}" id="st-${i}"><span class="dot"></span>${buses}<button class="nm" data-open="${i}" aria-expanded="${open}"><b>${esc(S[s].name)}</b><span class="code">${esc(S[s].code)}</span></button>${xf?`<div class="xfer">${xf}</div>`:''}<div class="times">${times}</div>${full}</div>`;
   });
   h+=`</div><p class="note">${T('tapStop')}</p></div>`;
@@ -688,14 +718,14 @@ const busMarkers=new Map(); /* one marker per trip, moved in place every second 
 function busPopup(id){
   const m=busMarkers.get(id); if(!m) return '';
   const a=m._a, x=R[a.p.r];
-  return `<div class="pop"><h4>${T('busHead',{n:esc(x.n),dest:esc(a.p.h)})}</h4><div class="code">${T('busNext',{stop:esc(S[a.p.s[a.k+1]].name),time:hhmm(a.t.start+a.off+a.t.prof[a.k+1])})}</div><div class="code" style="margin:4px 0 6px">${T('busEst')}</div><button data-line="${a.p.r}" data-dirp="${a.p.id}" data-keepdir>${T('openLine')}</button></div>`;
+  return `<div class="pop"><h4>${T('busHead',{n:esc(x.n),dest:esc(a.p.h)})}</h4><div class="code">${a.wait?T('nextLeaves',{stop:esc(S[a.p.s[0]].name),time:hhmm(a.t.start+a.off)}):T('busNext',{stop:esc(S[a.p.s[a.k+1]].name),time:hhmm(a.t.start+a.off+a.t.prof[a.k+1])})}</div><div class="code" style="margin:4px 0 6px">${T('busEst')}</div><button data-line="${a.p.r}" data-dirp="${a.p.id}" data-keepdir>${T('openLine')}</button></div>`;
 }
 function drawBuses(){
   if(!map) return;
   const c=ctx(); const seen=new Set();
   if(c.live){
     const sel=selection(); const shown=shownLines(); const pats=P.filter(p=>shown.has(p.r)||p.r===sel.r);
-    for(const a of activeTrips(pats,c)){
+    for(const a of activeTrips(pats,c).concat(waitingTrips(pats,c))){
       const id=a.p.id+':'+a.t.start+':'+a.off; seen.add(id);
       const d=a.p.dist[a.k]+(a.p.dist[a.k+1]-a.p.dist[a.k])*a.f;
       const ll=pointAlong(a.p.sh,d), hd=headingAt(a.p.sh,d), x=R[a.p.r];
@@ -708,6 +738,7 @@ function drawBuses(){
       } else m.setLatLng(ll);
       m._a=a;
       const el=m.getElement(), dir=el&&el.querySelector('.rot');
+      if(el) el.classList.toggle('parked',!!a.wait);
       if(dir){
         if(hd==null) dir.querySelector('.arrow').style.visibility='hidden';
         else {
