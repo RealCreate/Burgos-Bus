@@ -592,7 +592,7 @@ function drawBuses(){
     const d=a.p.dist[a.k]+(a.p.dist[a.k+1]-a.p.dist[a.k])*a.f;
     const ll=pointAlong(a.p.sh,d); const x=R[a.p.r];
     const icon=L.divIcon({className:'',html:`<span class="busmk" style="background:${x.col};color:${x.txt}">${esc(x.n)}</span>`,iconSize:[30,20],iconAnchor:[15,10]});
-    L.marker(ll,{icon,keyboard:false,title:`Line ${x.n} to ${a.p.h}`}).bindPopup(`<div class="pop"><h4>Line ${esc(x.n)} → ${esc(a.p.h)}</h4><div class="code">Next stop: ${esc(S[a.p.s[a.k+1]].name)} at ${hhmm(a.t.start+a.off+a.t.prof[a.k+1])}</div><button data-line="${a.p.r}" data-dirp="${a.p.id}">Open line →</button></div>`).addTo(busLayer);
+    L.marker(ll,{icon,keyboard:false,title:`Line ${x.n} to ${a.p.h}`}).bindPopup(`<div class="pop"><h4>Line ${esc(x.n)} → ${esc(a.p.h)}</h4><div class="code">Next stop: ${esc(S[a.p.s[a.k+1]].name)} at ${hhmm(a.t.start+a.off+a.t.prof[a.k+1])}</div><button data-line="${a.p.r}" data-dirp="${a.p.id}" data-keepdir>Open line →</button></div>`).addTo(busLayer);
   }
 }
 
@@ -607,7 +607,8 @@ function tickClock(){const n=madridNow();$('#clock').textContent=`Urban buses ·
 /* ---------- events ---------- */
 function openLine(r,opts={}){
   const v={kind:'line',r,d:0,p:null,open:null,hl:opts.hl??null};
-  if(opts.pat!=null){const p=P[opts.pat];v.d=p.d;v.p=p.id}
+  /* lines always open heading to the university first; only a specific bus keeps its own direction */
+  if(opts.pat!=null&&opts.keep){const p=P[opts.pat];v.d=p.d;v.p=p.id}
   else v.d=uniDir(r,ctx());
   if(!active.has(r)){active.add(r);saveActive()}
   st.panel=true; st.stack.push(v); render(); view.scrollTop=0;
@@ -628,7 +629,7 @@ document.addEventListener('click',e=>{
   if(t.dataset.toggle!=null){toggleActive(+t.dataset.toggle);return}
   if(t.hasAttribute('data-showall')){active=new Set(R.map(r=>r.i));saveActive();render(true);return}
   if(t.hasAttribute('data-hideall')){active.clear();saveActive();render(true);return}
-  if(t.dataset.line!=null){if(map)map.closePopup();openLine(+t.dataset.line,{pat:t.dataset.dirp!=null?+t.dataset.dirp:null,hl:t.dataset.hl!=null?+t.dataset.hl:null});return}
+  if(t.dataset.line!=null){if(map)map.closePopup();openLine(+t.dataset.line,{pat:t.dataset.dirp!=null?+t.dataset.dirp:null,keep:t.hasAttribute('data-keepdir'),hl:t.dataset.hl!=null?+t.dataset.hl:null});return}
   if(t.dataset.stop!=null){if(map)map.closePopup();openStop(+t.dataset.stop);return}
   const top=st.stack[st.stack.length-1];
   if(top&&top.kind==='line'){
