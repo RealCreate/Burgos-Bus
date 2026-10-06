@@ -8,7 +8,7 @@ import datetime, json, os, re, subprocess, sys, tempfile, zipfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 
-HEAD = ('<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
+HEAD = ('<!doctype html>\n<html lang="es">\n<head>\n<meta charset="utf-8">\n'
         '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">\n'
         '<meta name="apple-mobile-web-app-capable" content="yes">\n'
         '<meta name="theme-color" content="#0D5DA6">\n'

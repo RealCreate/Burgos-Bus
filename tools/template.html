@@ -258,8 +258,9 @@ const BUILD = '__BUILD__';
 const CARTO_KEY = 'cb1_4bg4_1_4e4f55a8c87cd98973096db3';
 const D = JSON.parse(document.getElementById('gtfs').textContent);
 const I18N = __I18N__;
-const MAIN_LANGS=['en','es','pt'], SPAIN_LANGS=['ca','gl','eu'];
-let lang='en';
+/* Spanish first, then Spain's other official languages, then English; everything else is alphabetical below */
+const MAIN_LANGS=['es','ca','eu','gl','en'];
+let lang='es';
 try{const v=localStorage.getItem('burgosbus-lang');if(v&&I18N[v])lang=v}catch(e){}
 function T(k,v){let s=(I18N[lang]&&I18N[lang][k])??I18N.en[k]??k;if(v)s=s.replace(/\{(\w+)\}/g,(m,n)=>v[n]??m);return s}
 const flagHtml=c=>{const f=I18N[c].flag;return f.length<=3&&/^[a-z]+$/.test(f)?`<span class="flag flag-${f}" aria-hidden="true"></span>`:`<span class="flag" aria-hidden="true">${f}</span>`};
@@ -742,7 +743,7 @@ function langList(){
   const nq=norm(q);
   const hit=c=>!nq||norm(I18N[c].name).includes(nq)||norm(I18N[c].en).includes(nq)||c.includes(nq);
   const row=c=>`<button class="lrow" data-lang="${c}" aria-current="${c===lang}">${flagHtml(c)}<div class="main"><div class="t1">${esc(I18N[c].name)}</div>${I18N[c].en!==I18N[c].name?`<div class="t2">${esc(I18N[c].en)}</div>`:''}</div>${c===lang?'<span class="ck" aria-hidden="true">✓</span>':''}</button>`;
-  const rest=Object.keys(I18N).filter(c=>!MAIN_LANGS.includes(c)).sort((a,b)=>(SPAIN_LANGS.includes(b)-SPAIN_LANGS.includes(a))||I18N[a].en.localeCompare(I18N[b].en));
+  const rest=Object.keys(I18N).filter(c=>!MAIN_LANGS.includes(c)).sort((a,b)=>I18N[a].name.localeCompare(I18N[b].name,'es'));
   const main=MAIN_LANGS.filter(hit), more=rest.filter(hit);
   let h='';
   if(main.length) h+=`<div class="eyebrow">${T('mainLangs')}</div><div class="list">${main.map(row).join('')}</div>`;
