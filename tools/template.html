@@ -72,6 +72,12 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .badge{display:inline-flex;align-items:center;justify-content:center;min-width:2.3em;height:1.75em;padding:0 .35em;border-radius:6px;font:700 1rem/1 var(--font-display);font-variant-numeric:tabular-nums;letter-spacing:.01em;flex:none;box-shadow:inset 0 0 0 1px rgba(0,0,0,.08)}
 .badge.sm{font-size:.78rem;min-width:2.1em;height:1.6em;border-radius:5px}
 .badge.lg{font-size:1.5rem;height:1.6em;border-radius:8px}
+.badge.off{background:var(--sunk)!important;color:var(--muted)!important;box-shadow:inset 0 0 0 1.5px var(--rule)}
+.tog{flex:none;border-radius:8px;padding:4px;margin:-4px}
+.tog .badge{transition:background-color .2s,color .2s,transform .15s}
+.tog:active .badge{transform:scale(.92)}
+.bulk{display:flex;gap:8px;margin:12px 0 0}
+.bulk .chip{color:var(--accent)}
 
 .list{display:flex;flex-direction:column;background:var(--surface);border-radius:14px;box-shadow:var(--shadow);overflow:hidden}
 .row{display:flex;align-items:center;gap:12px;padding:12px 14px;text-align:left;width:100%;border-top:1px solid var(--rule)}
@@ -249,6 +255,11 @@ const st = { tab:'lines', stack:[], day:0, q:'', sq:'', panel:false, full:false 
 let fav = {lines:[],stops:[]};
 try{const v=JSON.parse(localStorage.getItem('burgosbus-fav')||'null');if(v&&Array.isArray(v.lines)&&Array.isArray(v.stops))fav=v}catch(e){}
 function saveFav(){try{localStorage.setItem('burgosbus-fav',JSON.stringify(fav))}catch(e){}}
+const R05=R.findIndex(r=>r.n==='05');
+let active=new Set(R05>=0?[R05]:[]);
+try{const v=JSON.parse(localStorage.getItem('burgosbus-active')||'null');if(Array.isArray(v))active=new Set(v.filter(i=>R[i]))}catch(e){}
+function saveActive(){try{localStorage.setItem('burgosbus-active',JSON.stringify([...active]))}catch(e){}}
+function toggleActive(r){if(active.has(r))active.delete(r);else active.add(r);saveActive();render(true)}
 function toggleFav(kind,id){const a=fav[kind];const i=a.indexOf(id);if(i>=0)a.splice(i,1);else a.push(id);saveFav();render()}
 
 function ctx(){
@@ -285,6 +296,22 @@ function departuresAt(s,c,filter,opts={}){
   }
   out.sort((a,b)=>a.tm-b.tm);
   return out;
+}
+const UNI=(()=>{const s=S.find(x=>x.code==='PA00305');return s?[s.lat,s.lon]:[42.3428,-3.7350]})();
+const distM=(a,b,c,d)=>Math.hypot((a-c)*111320,(b-d)*111320*Math.cos(a*Math.PI/180));
+function uniDir(r,c){
+  const pats=routeP[r]; const dirs=[0,1].filter(d=>pats.some(p=>p.d===d));
+  if(dirs.length<2) return dirs[0]??0;
+  const CTR=[42.3405,-3.7003]; /* Plaza Mayor area */
+  const score=d=>{const p=mainPattern(pats.filter(q=>q.d===d),c);
+    const near=pt=>{let bi=0,bd=1e12;p.s.forEach((s,i)=>{const x=distM(S[s].lat,S[s].lon,pt[0],pt[1]);if(x<bd){bd=x;bi=i}});return [bi,bd]};
+    const [ui,ud]=near(UNI),[ci,cd]=near(CTR); const last=p.s[p.s.length-1];
+    return {centreToUni:ud<1500&&cd<1500&&ui>ci, term:distM(S[last].lat,S[last].lon,UNI[0],UNI[1])}};
+  const a=score(dirs[0]),b=score(dirs[1]);
+  /* a line through the centre and the campus: take the direction that goes centre -> campus */
+  if(a.centreToUni!==b.centreToUni) return a.centreToUni?dirs[0]:dirs[1];
+  /* otherwise: the direction whose end is nearer the campus */
+  return a.term<=b.term?dirs[0]:dirs[1];
 }
 function mainPattern(pats,c){let best=null,bn=-1;for(const p of pats){const n=tripsOn(p,c.key).length*1000+p.s.length;if(n>bn){bn=n;best=p}}return best}
 function badge(r,cls=''){const x=R[r];return `<span class="badge ${cls}" style="background:${x.col};color:${x.txt}">${esc(x.n)}</span>`}
@@ -323,7 +350,8 @@ function lineRow(r,c){
   else if(first) sub=`Next: ${hhmm(first.tm)} to ${esc(first.p.h)}`;
   else sub=c.live?'No more buses today':'No service this day';
   const on=fav.lines.includes(r);
-  return `<div class="row"><button class="row" style="padding:0;border:0;flex:1;min-width:0" data-line="${r}">${badge(r)}<div class="main"><div class="t1">${esc(R[r].name)}</div><div class="t2">${sub}</div></div></button><button class="star ${on?'on':''}" data-fav-line="${r}" aria-label="${on?'Remove from':'Add to'} favourites">★</button></div>`;
+  const lit=active.has(r);
+  return `<div class="row"><button class="tog" data-toggle="${r}" aria-pressed="${lit}" aria-label="${lit?'Hide':'Show'} line ${esc(R[r].n)} on the map">${badge(r,lit?'':'off')}</button><button class="row" style="padding:0;border:0;flex:1;min-width:0" data-line="${r}"><div class="main"><div class="t1">${esc(R[r].name)}</div><div class="t2">${sub}</div></div></button><button class="star ${on?'on':''}" data-fav-line="${r}" aria-label="${on?'Remove from':'Add to'} favourites">★</button></div>`;
 }
 function linesView(){
   const c=ctx(); const q=st.q.trim().toLowerCase();
@@ -332,7 +360,7 @@ function linesView(){
   const favs=fav.lines.filter(r=>R[r]&&match(r));
   const night=all.filter(r=>/^Buho/i.test(R[r].name));
   const day=all.filter(r=>!night.includes(r));
-  let h=`<div class="pad">${fallbackBanner(c)}<input id="q-lines" class="search" type="search" placeholder="Search lines, e.g. 05 or Gamonal" value="${esc(st.q)}" autocomplete="off">`;
+  let h=`<div class="pad">${fallbackBanner(c)}<input id="q-lines" class="search" type="search" placeholder="Search lines, e.g. 05 or Gamonal" value="${esc(st.q)}" autocomplete="off"><div class="bulk"><button class="chip" data-showall>Show all on map</button><button class="chip" data-hideall>Hide all</button></div><p class="note" style="margin-top:8px">Tap a line number to show or hide it on the map. Tap the name for stops and times.</p>`;
   if(favs.length) h+=`<div class="eyebrow">Favourites</div><div class="list">${favs.map(r=>lineRow(r,c)).join('')}</div>`;
   h+=`<div class="eyebrow">All lines</div><div class="list">${day.map(r=>lineRow(r,c)).join('')||'<div class="empty">No lines match.</div>'}</div>`;
   if(night.length) h+=`<div class="eyebrow">Night buses (Búho)</div><div class="list">${night.map(r=>lineRow(r,c)).join('')}</div>`;
@@ -343,7 +371,8 @@ function linesView(){
 function lineView(v){
   const c=ctx(); const r=v.r; const x=R[r];
   const pats=routeP[r];
-  const dirs=[0,1].filter(d=>pats.some(p=>p.d===d));
+  const ud=uniDir(r,c);
+  const dirs=[0,1].filter(d=>pats.some(p=>p.d===d)).sort((a,b)=>(b===ud)-(a===ud));
   if(!dirs.includes(v.d)) v.d=dirs[0];
   const dirPats=pats.filter(p=>p.d===v.d);
   const running=dirPats.filter(p=>tripsOn(p,c.key).length);
@@ -470,7 +499,7 @@ function initMap(){
 function syncMap(){
   if(!map) return;
   const sel=selection();
-  const key=sel.r+'|'+sel.pid+'|'+st.day;
+  const key=sel.r+'|'+sel.pid+'|'+st.day+'|'+[...active].sort((a,b)=>a-b).join(',');
   const chip=$('#selchip');
   if(sel.r>=0&&!st.panel){const x=R[sel.r];chip.hidden=false;chip.innerHTML=`<button data-openpanel="current" style="display:flex;align-items:center;gap:8px;min-width:0">${badge(sel.r)}<span class="nm">${esc(x.name)}</span></button><button class="x" data-clearsel aria-label="Show all lines"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>`}
   else chip.hidden=true;
@@ -503,23 +532,25 @@ function drawRoutes(sel){
   if(baseLayer) baseLayer.remove(); if(stopLayer) stopLayer.remove();
   baseLayer=L.layerGroup(); stopLayer=L.layerGroup();
   const r0=sel.r;
-  const order=R.map(r=>r.i).filter(i=>i!==r0); if(r0>=0) order.push(r0);
+  const order=R.map(r=>r.i).filter(i=>i!==r0&&active.has(i)); if(r0>=0) order.push(r0);
   const selP=P.find(q=>q.id===sel.pid);
   for(const r of order){
     const seen=new Set();
     const pats=routeP[r].slice().sort((a,b)=>(selP&&a.id===selP.id)-(selP&&b.id===selP.id));
     for(const p of pats){ if(seen.has(p.sh)) continue; seen.add(p.sh);
-      const hi=r0===r, dim=r0>=0&&!hi;
+      const hi=r0===r, dim=r0>=0&&!hi;  /* other shown lines fade while one is open */
       const main=hi&&(!selP||p.id===selP.id||p.sh===selP.sh);
       L.polyline(SH[p.sh].pts,{color:R[r].col,weight:main?7:(hi?3:3.5),opacity:dim?.12:(main?1:(hi?.45:.75)),dashArray:hi&&!main?'6 8':null,interactive:false}).addTo(baseLayer);
     }
   }
-  const stopsShown=r0>=0?(selP?selP.s:[...new Set(routeP[r0].flatMap(p=>p.s))]):S.map(s=>s.i).filter(i=>stopRefs[i].length);
+  const lineStops=new Set(r0>=0?(selP?selP.s:routeP[r0].flatMap(p=>p.s)):[]);
+  const allStops=S.map(s=>s.i).filter(i=>stopRefs[i].length).sort((a,b)=>lineStops.has(a)-lineStops.has(b));
   const css=getComputedStyle(document.documentElement);
-  const surf=css.getPropertyValue('--surface').trim()||'#fff', ink=css.getPropertyValue('--ink').trim()||'#000';
-  for(const i of new Set(stopsShown)){
-    const base=r0>=0?6:4.5;
-    const m=L.circleMarker([S[i].lat,S[i].lon],{radius:base,color:r0>=0?R[r0].col:ink,weight:r0>=0?3:1.5,fillColor:surf,fillOpacity:1});
+  const surf=css.getPropertyValue('--surface').trim()||'#fff', ink=css.getPropertyValue('--ink').trim()||'#000', mut=css.getPropertyValue('--muted').trim()||'#777';
+  for(const i of allStops){
+    const on=lineStops.has(i), faded=r0>=0&&!on;
+    const base=on?6:(faded?3.5:4.5);
+    const m=L.circleMarker([S[i].lat,S[i].lon],{radius:base,color:on?R[r0].col:(faded?mut:ink),weight:on?3:1.5,opacity:faded?.55:1,fillColor:surf,fillOpacity:faded?.7:1});
     m.on('click',()=>{m.bindPopup(stopPopup(i),{maxWidth:270}).openPopup()});
     m.on('mouseover',()=>growStop(m,base*1.8));
     m.on('mouseout',()=>growStop(m,base));
@@ -556,7 +587,7 @@ function pointAlong(sh,dist){
 function drawBuses(){
   if(!map) return; busLayer.clearLayers();
   const c=ctx(); if(!c.live) return;
-  const sel=selection(); const pats=sel.r>=0?routeP[sel.r]:P;
+  const sel=selection(); const pats=P.filter(p=>active.has(p.r)||p.r===sel.r);
   for(const a of activeTrips(pats,c)){
     const d=a.p.dist[a.k]+(a.p.dist[a.k+1]-a.p.dist[a.k])*a.f;
     const ll=pointAlong(a.p.sh,d); const x=R[a.p.r];
@@ -577,7 +608,8 @@ function tickClock(){const n=madridNow();$('#clock').textContent=`Urban buses ·
 function openLine(r,opts={}){
   const v={kind:'line',r,d:0,p:null,open:null,hl:opts.hl??null};
   if(opts.pat!=null){const p=P[opts.pat];v.d=p.d;v.p=p.id}
-  else { const c=ctx(); const mp=mainPattern(routeP[r],c); v.d=mp?mp.d:0; }
+  else v.d=uniDir(r,ctx());
+  if(!active.has(r)){active.add(r);saveActive()}
   st.panel=true; st.stack.push(v); render(); view.scrollTop=0;
   if(v.hl!=null) requestAnimationFrame(()=>{const p=P.find(q=>q.id===v.p)||null;const el=view.querySelector('.stop.hl');if(el)el.scrollIntoView({block:'center'})});
 }
@@ -593,6 +625,9 @@ document.addEventListener('click',e=>{
   if(t.id==='close-panel'){st.panel=false;st.full=false;render();return}
   if(t.id==='grow'){st.full=!st.full;render(true);return}
   if(t.hasAttribute('data-clearsel')){st.stack=[];render();return}
+  if(t.dataset.toggle!=null){toggleActive(+t.dataset.toggle);return}
+  if(t.hasAttribute('data-showall')){active=new Set(R.map(r=>r.i));saveActive();render(true);return}
+  if(t.hasAttribute('data-hideall')){active.clear();saveActive();render(true);return}
   if(t.dataset.line!=null){if(map)map.closePopup();openLine(+t.dataset.line,{pat:t.dataset.dirp!=null?+t.dataset.dirp:null,hl:t.dataset.hl!=null?+t.dataset.hl:null});return}
   if(t.dataset.stop!=null){if(map)map.closePopup();openStop(+t.dataset.stop);return}
   const top=st.stack[st.stack.length-1];
