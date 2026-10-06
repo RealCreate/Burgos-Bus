@@ -33,7 +33,8 @@ html{height:100%;box-sizing:border-box}
 body{height:100%;background:var(--bg);color:var(--ink);font:15px/1.45 var(--font-body);overflow:hidden}
 button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
 button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
-.app{height:100%;display:flex;flex-direction:column;max-width:720px;margin:0 auto;background:var(--bg)}
+.app{height:100%;display:flex;flex-direction:column;background:var(--bg)}
+.stage{flex:1;min-height:0;position:relative;overflow:hidden}
 
 /* header */
 .top{flex:none;display:flex;align-items:center;gap:12px;padding:10px 16px;background:var(--surface);border-bottom:1px solid var(--rule)}
@@ -48,10 +49,26 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .pad{padding:14px 16px 28px}
 
 /* tab bar */
-.tabs{flex:none;display:grid;grid-template-columns:repeat(3,1fr);background:var(--surface);border-top:1px solid var(--rule)}
-.tabs button{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 0 10px;font-size:.75rem;font-weight:700;color:var(--muted)}
-.tabs button[aria-current="page"]{color:var(--accent)}
-.tabs svg{width:22px;height:22px}
+/* side panel: left card on tablets, bottom sheet on phones */
+.panel{position:absolute;z-index:1100;display:flex;flex-direction:column;background:var(--bg);box-shadow:0 8px 30px rgba(10,20,30,.28);overflow:hidden;transition:transform .25s ease,height .25s ease}
+.panel[hidden]{display:none!important}
+@media (min-width:700px){.panel{top:12px;left:12px;bottom:12px;width:min(390px,calc(100% - 24px));border-radius:16px}}
+@media (max-width:699px){.panel{left:0;right:0;bottom:0;height:56%;border-radius:18px 18px 0 0}.panel.full{height:100%;border-radius:0}}
+.pbar{flex:none;display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--surface);border-bottom:1px solid var(--rule)}
+.pbar .seg{flex:1;margin:0;padding:3px}
+.pbar .seg button{padding:7px 8px}
+.ibtn{display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;flex:none;color:var(--muted)}
+.ibtn:active{background:var(--sunk)}
+.grab{display:none}
+@media (max-width:699px){.grab{display:flex}}
+@media (prefers-reduced-motion:reduce){.panel{transition:none}}
+.fab{position:absolute;z-index:1000;top:12px;left:12px;display:flex;gap:8px}
+.fab button,.selchip{display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:999px;background:var(--surface);color:var(--ink);font-weight:700;box-shadow:0 2px 10px rgba(10,20,30,.25)}
+.fab button svg{width:20px;height:20px;color:var(--accent)}
+.selchip{position:absolute;z-index:1000;left:12px;bottom:28px;max-width:calc(100% - 24px);padding:6px 6px 6px 8px}
+.selchip .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.selchip .x{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--muted);flex:none}
+.leaflet-top.leaflet-right{top:6px}
 
 /* generic */
 .search{width:100%;padding:11px 14px;border-radius:12px;border:1px solid var(--rule);background:var(--surface);color:var(--ink);font:inherit}
@@ -137,13 +154,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .dep .when.soon{color:var(--live)}
 
 /* map */
-.mapwrap{position:relative;height:100%;display:flex;flex-direction:column}
-.mapbar{flex:none;padding:10px 16px 4px;background:var(--surface);border-bottom:1px solid var(--rule)}
-.mapbar .chips{margin-bottom:6px}
-.mapbar .chip{display:inline-flex;align-items:center;gap:6px}
-.mapbar .sw{width:12px;height:12px;border-radius:3px}
-#map{flex:1;min-height:0;background:var(--bg)}
-.maplegend{font-size:.74rem;color:var(--muted);padding:0 0 6px}
+#map{position:absolute;inset:0;background:var(--bg)}
 .leaflet-container{background:var(--bg)!important;font-family:var(--font-body)!important}
 .leaflet-popup-content-wrapper,.leaflet-popup-tip{background:var(--surface)!important;color:var(--ink)!important}
 .leaflet-bar a{background:var(--surface)!important;color:var(--ink)!important;border-color:var(--rule)!important}
@@ -818,12 +829,22 @@ svg.leaflet-image-layer.leaflet-interactive path {
     <label for="day" hidden>Day</label>
     <select id="day" class="day" aria-label="Day to show"></select>
   </header>
-  <main class="view" id="view"></main>
-  <nav class="tabs" aria-label="Sections">
-    <button id="tab-lines" data-tab="lines" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Lines</button>
-    <button id="tab-stops" data-tab="stops"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10z"/><circle cx="12" cy="11" r="2.2"/></svg>Stops</button>
-    <button id="tab-map" data-tab="map"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14"/></svg>Map</button>
-  </nav>
+  <div class="stage">
+    <div id="map" role="region" aria-label="Map of Burgos bus routes"></div>
+    <div class="fab" id="fab">
+      <button id="open-lines" data-openpanel="lines"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Lines</button>
+      <button id="open-stops" data-openpanel="stops"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10z"/><circle cx="12" cy="11" r="2.2"/></svg>Stops</button>
+    </div>
+    <div class="selchip" id="selchip" hidden></div>
+    <aside class="panel" id="panel" aria-label="Lines and stops" hidden>
+      <div class="pbar">
+        <button class="ibtn grab" id="grow" aria-label="Expand panel"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m6 15 6-6 6 6"/></svg></button>
+        <div class="seg" role="group" aria-label="Section"><button id="tab-lines" data-tab="lines" aria-pressed="true">Lines</button><button id="tab-stops" data-tab="stops" aria-pressed="false">Stops</button></div>
+        <button class="ibtn" id="close-panel" aria-label="Close panel"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+      </div>
+      <main class="view" id="view"></main>
+    </aside>
+  </div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
@@ -876,7 +897,7 @@ const hhmm = s => {s=((s%86400)+86400)%86400;return String(Math.floor(s/3600)).p
 function rel(diff){if(diff<60)return 'Due';const m=Math.floor(diff/60);if(m<60)return m+' min';return null}
 
 /* ---------- state ---------- */
-const st = { tab:'lines', stack:[], day:0, q:'', sq:'', mapRoute:-1 };
+const st = { tab:'lines', stack:[], day:0, q:'', sq:'', panel:false, full:false };
 let fav = {lines:[],stops:[]};
 try{const v=JSON.parse(localStorage.getItem('burgosbus-fav')||'null');if(v&&Array.isArray(v.lines)&&Array.isArray(v.stops))fav=v}catch(e){}
 function saveFav(){try{localStorage.setItem('burgosbus-fav',JSON.stringify(fav))}catch(e){}}
@@ -925,15 +946,21 @@ const view=$('#view');
 function render(keepScroll){
   const y=view.scrollTop;
   const top=st.stack[st.stack.length-1];
-  document.querySelectorAll('.tabs button').forEach(b=>b.setAttribute('aria-current',b.dataset.tab===st.tab&&!top?'page':'false'));
-  if(top&&top.kind==='line') view.innerHTML=lineView(top);
-  else if(top&&top.kind==='stop') view.innerHTML=stopView(top);
-  else if(st.tab==='lines') view.innerHTML=linesView();
-  else if(st.tab==='stops') view.innerHTML=stopsView();
-  else { mapView(); }
-  if(keepScroll) view.scrollTop=y;
-  if(!(st.tab==='map'&&!top)) view.style.overflowY='auto';
+  document.querySelectorAll('.pbar [data-tab]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tab===st.tab&&!top)));
+  $('#panel').hidden=!st.panel; $('#fab').hidden=st.panel;
+  $('#panel').classList.toggle('full',st.full);
+  $('#grow').setAttribute('aria-label',st.full?'Shrink panel':'Expand panel');
+  $('#grow svg').style.transform=st.full?'rotate(180deg)':'';
+  if(st.panel){
+    if(top&&top.kind==='line') view.innerHTML=lineView(top);
+    else if(top&&top.kind==='stop') view.innerHTML=stopView(top);
+    else if(st.tab==='lines') view.innerHTML=linesView();
+    else view.innerHTML=stopsView();
+    if(keepScroll) view.scrollTop=y;
+  }
+  syncMap();
 }
+const wide=()=>matchMedia('(min-width:700px)').matches;
 function fallbackBanner(c){
   const r=resolveKey(c.key);
   if(!r.fb) return '';
@@ -1025,7 +1052,7 @@ function lineView(v){
     (busAt[i]||[]).forEach(a=>{buses+=`<span class="bus" style="top:calc(21px + ${(a.f*100).toFixed(1)}%)" title="Between ${esc(S[p.s[i]].name)} and ${esc(S[p.s[i+1]]?.name||'')}">${BUS_SVG}</span>`});
     h+=`<div class="stop ${i===0?'first':''} ${last?'last':''} ${v.hl===s?'hl':''}" id="st-${i}"><span class="dot"></span>${buses}<button class="nm" data-open="${i}" aria-expanded="${open}"><b>${esc(S[s].name)}</b><span class="code">${esc(S[s].code)}</span></button>${xf?`<div class="xfer">${xf}</div>`:''}<div class="times">${times}</div>${full}</div>`;
   });
-  h+=`</div><p class="note">Tap a stop to see its full timetable for the day.</p><button class="linkbtn" data-maproute="${r}">Show line ${esc(x.n)} on the map</button></div>`;
+  h+=`</div><p class="note">Tap a stop to see its full timetable for the day and find it on the map.</p></div>`;
   return h;
 }
 
@@ -1061,58 +1088,84 @@ function stopView(v){
 }
 
 /* ---------- map ---------- */
-let map=null, baseLayer=null, busLayer=null, stopLayer=null, mapBuilt=false;
-function mapView(){
-  view.style.overflowY='hidden';
-  if(!view.querySelector('#map')){
-    view.innerHTML=`<div class="mapwrap"><div class="mapbar"><div class="chips" id="mapchips" role="group" aria-label="Line on map"></div><div class="maplegend" id="maplegend"></div></div><div id="map" role="region" aria-label="Map of bus routes"></div></div>`;
-    map=null;
-  }
-  const chips=$('#mapchips');
-  chips.innerHTML=`<button class="chip" data-maproute="-1" aria-pressed="${st.mapRoute<0}">All lines</button>`+R.map(r=>`<button class="chip" data-maproute="${r.i}" aria-pressed="${st.mapRoute===r.i}"><span class="sw" style="background:${r.col}"></span>${esc(r.n)}</button>`).join('');
-  if(typeof L==='undefined'){ $('#map').innerHTML='<div class="empty">The map library could not load. Check your connection and reopen the page.</div>'; return; }
-  if(!map){
-    map=L.map('map',{zoomControl:true,attributionControl:STANDALONE,preferCanvas:true,zoomSnap:.5});
-    const b=L.latLngBounds(S.filter((_,i)=>stopRefs[i].length).map(s=>[s.lat,s.lon]));
-    map.fitBounds(b.pad(-.15));
-    if(STANDALONE){
-      const dark=document.documentElement.dataset.theme==='dark'||(document.documentElement.dataset.theme!=='light'&&matchMedia('(prefers-color-scheme: dark)').matches);
-      L.tileLayer(`https://basemaps.cartocdn.com/rastertiles/${dark?'dark_all':'light_all'}/{z}/{x}/{y}{r}.png?key=${CARTO_KEY}`,{maxZoom:19,attribution:'© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>'}).addTo(map);
-      if(navigator.geolocation){
-        const Loc=L.Control.extend({options:{position:'topleft'},onAdd(){const d=L.DomUtil.create('div','leaflet-bar');d.innerHTML='<a href="#" class="locate" role="button" aria-label="Show my location" title="Show my location"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></a>';L.DomEvent.disableClickPropagation(d);d.firstChild.addEventListener('click',e=>{e.preventDefault();locateMe()});return d}});
-        map.addControl(new Loc());
-      }
-    }
-    busLayer=L.layerGroup().addTo(map);
-  }
-  drawRoutes(); drawBuses();
-  setTimeout(()=>map&&map.invalidateSize(),50);
-  const sel=st.mapRoute>=0?R[st.mapRoute]:null;
-  $('#maplegend').textContent=sel?`Line ${sel.n} · ${sel.name}. Tap a stop for times.`:'All lines. Tap a stop for its buses and times. Bus markers are timetable estimates.';
-  if(sel){const c=$('#mapchips [aria-pressed="true"]');c&&c.scrollIntoView({inline:'center',block:'nearest'})}
+let map=null, baseLayer=null, busLayer=null, stopLayer=null, ringLayer=null, drawnKey=null;
+function selection(){
+  const top=st.stack[st.stack.length-1];
+  if(top&&top.kind==='line') return {r:top.r,pid:top.p,stop:top.hl};
+  if(top&&top.kind==='stop') return {r:-1,pid:null,stop:top.s};
+  return {r:-1,pid:null,stop:null};
 }
-function drawRoutes(){
+function fitPad(){
+  const panel=$('#panel');
+  if(!st.panel) return {paddingTopLeft:[24,70],paddingBottomRight:[24,80]};
+  if(wide()) return {paddingTopLeft:[panel.offsetWidth+40,24],paddingBottomRight:[24,24]};
+  return {paddingTopLeft:[20,20],paddingBottomRight:[20,panel.offsetHeight+20]};
+}
+function initMap(){
+  if(typeof L==='undefined'){ $('#map').innerHTML='<div class="empty">The map could not load. Check your connection and reopen the page.</div>'; return; }
+  map=L.map('map',{zoomControl:false,attributionControl:STANDALONE,preferCanvas:true,zoomSnap:.5});
+  L.control.zoom({position:'topright'}).addTo(map);
+  const b=L.latLngBounds(S.filter((_,i)=>stopRefs[i].length).map(s=>[s.lat,s.lon]));
+  map.fitBounds(b.pad(-.12));
+  if(STANDALONE){
+    const dark=document.documentElement.dataset.theme==='dark'||(document.documentElement.dataset.theme!=='light'&&matchMedia('(prefers-color-scheme: dark)').matches);
+    L.tileLayer(`https://basemaps.cartocdn.com/rastertiles/${dark?'dark_all':'light_all'}/{z}/{x}/{y}{r}.png?key=${CARTO_KEY}`,{maxZoom:19,attribution:'© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>'}).addTo(map);
+    if(navigator.geolocation){
+      const Loc=L.Control.extend({options:{position:'topright'},onAdd(){const d=L.DomUtil.create('div','leaflet-bar');d.innerHTML='<a href="#" class="locate" role="button" aria-label="Show my location" title="Show my location"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></a>';L.DomEvent.disableClickPropagation(d);d.firstChild.addEventListener('click',e=>{e.preventDefault();locateMe()});return d}});
+      map.addControl(new Loc());
+    }
+  }
+  busLayer=L.layerGroup().addTo(map); ringLayer=L.layerGroup().addTo(map);
+  map.on('click',()=>{ if(st.panel&&!wide()&&st.full){st.full=false;render(true)} });
+}
+function syncMap(){
+  if(!map) return;
+  const sel=selection();
+  const key=sel.r+'|'+sel.pid+'|'+st.day;
+  const chip=$('#selchip');
+  if(sel.r>=0&&!st.panel){const x=R[sel.r];chip.hidden=false;chip.innerHTML=`<button data-openpanel="current" style="display:flex;align-items:center;gap:8px;min-width:0">${badge(sel.r)}<span class="nm">${esc(x.name)}</span></button><button class="x" data-clearsel aria-label="Show all lines"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>`}
+  else chip.hidden=true;
+  if(key!==drawnKey){
+    const prevR=drawnKey==null?null:+drawnKey.split('|')[0];
+    drawnKey=key; drawRoutes(sel);
+    if(sel.r>=0){
+      const p=P.find(q=>q.id===sel.pid);
+      const pts=p?SH[p.sh].pts:routeP[sel.r].flatMap(q=>SH[q.sh].pts);
+      if(pts.length&&(prevR!==sel.r||sel.stop==null)) map.fitBounds(L.latLngBounds(pts),fitPad());
+    }
+    drawBuses();
+  }
+  ringLayer.clearLayers();
+  if(sel.stop!=null){const s=S[sel.stop];L.circleMarker([s.lat,s.lon],{radius:12,color:'#1A73E8',weight:3,fill:false,interactive:false}).addTo(ringLayer)}
+}
+function focusStop(i){
+  if(!map) return; const s=S[i];
+  map.fitBounds(L.latLng(s.lat,s.lon).toBounds(500),Object.assign({maxZoom:17},fitPad()));
+}
+function drawRoutes(sel){
   if(baseLayer) baseLayer.remove(); if(stopLayer) stopLayer.remove();
   baseLayer=L.layerGroup(); stopLayer=L.layerGroup();
-  const sel=st.mapRoute;
-  const order=R.map(r=>r.i).filter(i=>i!==sel); if(sel>=0) order.push(sel);
+  const r0=sel.r;
+  const order=R.map(r=>r.i).filter(i=>i!==r0); if(r0>=0) order.push(r0);
+  const selP=P.find(q=>q.id===sel.pid);
   for(const r of order){
     const seen=new Set();
-    for(const p of routeP[r]){ if(seen.has(p.sh)) continue; seen.add(p.sh);
-      const hi=sel===r, dim=sel>=0&&!hi;
-      L.polyline(SH[p.sh].pts,{color:R[r].col,weight:hi?6:3,opacity:dim?.14:(hi?.95:.6),interactive:false}).addTo(baseLayer);
+    const pats=routeP[r].slice().sort((a,b)=>(selP&&a.id===selP.id)-(selP&&b.id===selP.id));
+    for(const p of pats){ if(seen.has(p.sh)) continue; seen.add(p.sh);
+      const hi=r0===r, dim=r0>=0&&!hi;
+      const main=hi&&(!selP||p.id===selP.id||p.sh===selP.sh);
+      L.polyline(SH[p.sh].pts,{color:R[r].col,weight:main?7:(hi?3:3.5),opacity:dim?.12:(main?1:(hi?.45:.75)),dashArray:hi&&!main?'6 8':null,interactive:false}).addTo(baseLayer);
     }
   }
-  const stopsShown=sel>=0?[...new Set(routeP[sel].flatMap(p=>p.s))]:S.map(s=>s.i).filter(i=>stopRefs[i].length);
+  const stopsShown=r0>=0?(selP?selP.s:[...new Set(routeP[r0].flatMap(p=>p.s))]):S.map(s=>s.i).filter(i=>stopRefs[i].length);
   const css=getComputedStyle(document.documentElement);
   const surf=css.getPropertyValue('--surface').trim()||'#fff', ink=css.getPropertyValue('--ink').trim()||'#000';
-  for(const i of stopsShown){
-    const m=L.circleMarker([S[i].lat,S[i].lon],{radius:sel>=0?5:3.2,color:sel>=0?R[sel].col:ink,weight:sel>=0?3:1.2,fillColor:surf,fillOpacity:1});
-    m.on('click',()=>{m.bindPopup(stopPopup(i),{maxWidth:260}).openPopup()});
+  for(const i of new Set(stopsShown)){
+    const m=L.circleMarker([S[i].lat,S[i].lon],{radius:r0>=0?6:4,color:r0>=0?R[r0].col:ink,weight:r0>=0?3:1.5,fillColor:surf,fillOpacity:1});
+    m.on('click',()=>{m.bindPopup(stopPopup(i),{maxWidth:270}).openPopup()});
     m.addTo(stopLayer);
   }
   baseLayer.addTo(map); stopLayer.addTo(map);
-  if(sel>=0){ const pts=routeP[sel].flatMap(p=>SH[p.sh].pts); if(pts.length) map.fitBounds(L.latLngBounds(pts),{padding:[20,20]}); }
 }
 function stopPopup(i){
   const c=ctx(); const deps=departuresAt(i,c,null,{from:c.from-30});
@@ -1132,7 +1185,7 @@ function locateMe(){
     const km=Math.sqrt(bd)*111;
     if(best>=0&&km<3){ map.setView([S[best].lat,S[best].lon],17); L.popup({maxWidth:260}).setLatLng([S[best].lat,S[best].lon]).setContent(stopPopup(best)).openOn(map); }
     else map.setView(ll,15);
-  },()=>{ $('#maplegend').textContent='Location is off. Allow location for this site in your browser settings to find the nearest stop.'; },{enableHighAccuracy:true,timeout:10000,maximumAge:30000});
+  },()=>{ L.popup().setLatLng(map.getCenter()).setContent('<div class="pop">Location is off. Allow location for this site in your browser settings to find your nearest stop.</div>').openOn(map); },{enableHighAccuracy:true,timeout:10000,maximumAge:30000});
 }
 function pointAlong(sh,dist){
   const {pts,cum}=SH[sh]; if(dist<=cum[0]) return pts[0]; if(dist>=cum[cum.length-1]) return pts[pts.length-1];
@@ -1143,7 +1196,7 @@ function pointAlong(sh,dist){
 function drawBuses(){
   if(!map) return; busLayer.clearLayers();
   const c=ctx(); if(!c.live) return;
-  const pats=st.mapRoute>=0?routeP[st.mapRoute]:P;
+  const sel=selection(); const pats=sel.r>=0?routeP[sel.r]:P;
   for(const a of activeTrips(pats,c)){
     const d=a.p.dist[a.k]+(a.p.dist[a.k+1]-a.p.dist[a.k])*a.f;
     const ll=pointAlong(a.p.sh,d); const x=R[a.p.r];
@@ -1165,10 +1218,10 @@ function openLine(r,opts={}){
   const v={kind:'line',r,d:0,p:null,open:null,hl:opts.hl??null};
   if(opts.pat!=null){const p=P[opts.pat];v.d=p.d;v.p=p.id}
   else { const c=ctx(); const mp=mainPattern(routeP[r],c); v.d=mp?mp.d:0; }
-  st.stack.push(v); render(); view.scrollTop=0;
+  st.panel=true; st.stack.push(v); render(); view.scrollTop=0;
   if(v.hl!=null) requestAnimationFrame(()=>{const p=P.find(q=>q.id===v.p)||null;const el=view.querySelector('.stop.hl');if(el)el.scrollIntoView({block:'center'})});
 }
-function openStop(s){st.stack.push({kind:'stop',s});render();view.scrollTop=0}
+function openStop(s){st.panel=true;st.stack.push({kind:'stop',s});render();view.scrollTop=0;focusStop(s)}
 
 document.addEventListener('click',e=>{
   const t=e.target.closest('button,a'); if(!t) return;
@@ -1176,28 +1229,31 @@ document.addEventListener('click',e=>{
   if(t.hasAttribute('data-back')){st.stack.pop();render();return}
   if(t.dataset.favLine!=null){toggleFav('lines',+t.dataset.favLine);return}
   if(t.dataset.favStop!=null){toggleFav('stops',+t.dataset.favStop);return}
-  if(t.dataset.maproute!=null){st.mapRoute=+t.dataset.maproute;st.tab='map';st.stack=[];if(map){render()}else render();return}
+  if(t.dataset.openpanel!=null){const w=t.dataset.openpanel;st.panel=true;if(w!=='current'){st.tab=w;st.stack=[]}render();view.scrollTop=0;return}
+  if(t.id==='close-panel'){st.panel=false;st.full=false;render();return}
+  if(t.id==='grow'){st.full=!st.full;render(true);return}
+  if(t.hasAttribute('data-clearsel')){st.stack=[];render();return}
   if(t.dataset.line!=null){if(map)map.closePopup();openLine(+t.dataset.line,{pat:t.dataset.dirp!=null?+t.dataset.dirp:null,hl:t.dataset.hl!=null?+t.dataset.hl:null});return}
   if(t.dataset.stop!=null){if(map)map.closePopup();openStop(+t.dataset.stop);return}
   const top=st.stack[st.stack.length-1];
   if(top&&top.kind==='line'){
     if(t.dataset.dir!=null){top.d=+t.dataset.dir;top.p=null;top.open=null;render();view.scrollTop=0;return}
     if(t.dataset.pat!=null){top.p=+t.dataset.pat;top.open=null;render(true);return}
-    if(t.dataset.open!=null){const i=+t.dataset.open;top.open=top.open===i?null:i;render(true);return}
+    if(t.dataset.open!=null){const i=+t.dataset.open;top.open=top.open===i?null:i;const p=P.find(q=>q.id===top.p);if(top.open!=null&&p){top.hl=p.s[i];render(true);if(!st.full)focusStop(p.s[i])}else render(true);return}
   }
 });
 view.addEventListener('input',e=>{
   if(e.target.id==='q-lines'){st.q=e.target.value;const pos=e.target.selectionStart;render(true);const i=$('#q-lines');i.focus();try{i.setSelectionRange(pos,pos)}catch(_){}}
   if(e.target.id==='q-stops'){st.sq=e.target.value;const pos=e.target.selectionStart;render(true);const i=$('#q-stops');i.focus();try{i.setSelectionRange(pos,pos)}catch(_){}}
 });
-$('#day').addEventListener('change',e=>{st.day=+e.target.value;render(true)});
+$('#day').addEventListener('change',e=>{st.day=+e.target.value;render(true);drawBuses()});
 
-buildDays(); tickClock(); render();
+buildDays(); tickClock(); initMap(); render();
+window.addEventListener('resize',()=>map&&map.invalidateSize());
 setInterval(()=>{
   tickClock();
   const a=document.activeElement; if(a&&a.tagName==='INPUT') return;
-  const top=st.stack[st.stack.length-1];
-  if(st.tab==='map'&&!top) drawBuses(); else render(true);
+  drawBuses(); if(st.panel) render(true);
 },20000);
 let lastKey=madridNow().key;
 setInterval(()=>{const k=madridNow().key;if(k!==lastKey){lastKey=k;buildDays();render(true)}},60000);
