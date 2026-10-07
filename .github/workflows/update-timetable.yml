@@ -29,7 +29,9 @@ jobs:
 
       - name: Download the timetable
         run: |
-          curl -fsSL --retry 3 --retry-delay 20 -A "Mozilla/5.0 (Burgos Bus site updater)" \
+          # time limits so an unresponsive server fails the run in minutes, not at the job timeout
+          curl -4 -fSL --connect-timeout 30 --max-time 180 --retry 2 --retry-delay 20 --retry-all-errors \
+            -A "Mozilla/5.0 (Burgos Bus site updater)" -w 'HTTP %{http_code}, %{size_download} bytes in %{time_total}s\n' \
             -o Google_transit.zip https://www.aytoburgos.es/GTFS/Google_transit.zip
           unzip -tq Google_transit.zip
 
