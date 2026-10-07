@@ -990,20 +990,30 @@ function growStop(m,target){
   const step=now=>{const k=Math.min(1,(now-t0)/dur), e=1-Math.pow(1-k,3);m.setRadius(from+(target-from)*e);if(k<1)m._anim=requestAnimationFrame(step);else m._anim=null};
   m._anim=requestAnimationFrame(step);
 }
-/* Stops fade in with zoom, as in transit apps: zoomed out the city would be a solid blob of circles
-   hiding the routes. The open line's stops always show, shrunk; the rest appear from neighbourhood
-   zoom (from street zoom while a line is open) and reach full size at street level. */
+/* Stops change with zoom so they never bury the routes. Street level (14+): the usual white circles,
+   growing to full size. Zoomed out (12-14): a small black dot sitting on the route line, like a metro
+   map. Further out (<12) only the open line keeps its dots. While a line is open, other stops wait
+   until street zoom (15) so the line stands out. */
 let stopMarkers=[];
-const stopScale=z=>z>=16?1:z>=15?.85:z>=14?.65:z>=13?.5:.4;
+const DOT_Z=14, DOT_MIN_Z=12;
+const stopScale=z=>z>=16?1:z>=15?.85:.65;
 function styleStops(){
   if(!map||!stopLayer) return;
-  const z=map.getZoom(), k=stopScale(z), lineOpen=selection().r>=0;
+  const z=map.getZoom(), lineOpen=selection().r>=0, dots=z<DOT_Z, dark=isDarkNow();
   for(const m of stopMarkers){
-    const b=m._b, show=b.on||z>=(lineOpen?15:14)||m.isPopupOpen();
+    const b=m._b;
+    const show=m.isPopupOpen()||b.on||(lineOpen?z>=15:z>=DOT_MIN_Z);
     if(show!==stopLayer.hasLayer(m)){ if(show) stopLayer.addLayer(m); else stopLayer.removeLayer(m); }
     if(!show) continue;
-    m._r=b.base*(b.on?Math.max(k,.6):k); if(!m._anim) m.setRadius(m._r);
-    m.setStyle({weight:Math.max(1,b.weight*Math.max(k,.6))});
+    if(dots){
+      m._r=b.on?2.6:2;
+      /* on the dark map a black dot alone just looks like a gap in the line, so give it a grey rim */
+      m.setStyle({stroke:dark,color:'#8E8E93',weight:1,opacity:1,fillColor:'#111',fillOpacity:b.faded?.55:.95});
+    } else {
+      const k=stopScale(z); m._r=b.base*k;
+      m.setStyle({stroke:true,color:b.col,opacity:b.faded?.55:1,weight:Math.max(1,b.weight*k),fillColor:b.fill,fillOpacity:b.faded?.7:1});
+    }
+    if(!m._anim) m.setRadius(m._r);
   }
 }
 function drawRoutes(sel){
@@ -1037,7 +1047,7 @@ function drawRoutes(sel){
     const on=lineStops.has(i), faded=r0>=0&&!on;
     const base=on?6:(faded?3.5:4.5);
     const m=L.circleMarker([S[i].lat,S[i].lon],{radius:base,color:on?R[r0].col:(faded?mut:ink),weight:on?3:1.5,opacity:faded?.55:1,fillColor:surf,fillOpacity:faded?.7:1});
-    m._b={base,weight:on?3:1.5,on,faded};
+    m._b={base,weight:on?3:1.5,on,faded,fill:surf,col:on?R[r0].col:(faded?mut:ink)};
     m.on('click',()=>{m.bindPopup(stopPop(i)).openPopup()});
     if(canHover){ m.on('mouseover',()=>growStop(m,m._r*1.8)); m.on('mouseout',()=>growStop(m,m._r)); }
     stopMarkers.push(m);
