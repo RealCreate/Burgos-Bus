@@ -926,7 +926,9 @@ function initMap(){
       const drop=()=>{ if(old&&map.hasLayer(old)&&tiles!==old) map.removeLayer(old); };
       const fin=()=>{ if(done) return; done=true; drop(); res(); };
       nl.once('load',fin); setTimeout(()=>{ if(!done){done=true;res();} },450); setTimeout(drop,4000);
-      drawnKey=null; markedStop=undefined; syncMap();
+      /* repaint the routes and stops in the new colours where they are; going through syncMap would
+         treat this as a newly opened line and re-fit the map, losing the user's zoom and position */
+      if(drawnKey!=null) drawRoutes(selection()); markedStop=undefined; markSel();
     });
     const mq=matchMedia('(prefers-color-scheme: dark)');
     const onSys=()=>{ if(themeMode==='auto') themeChanged(); };
