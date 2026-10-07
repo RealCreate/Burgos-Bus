@@ -1,10 +1,12 @@
-import csv, json, sys, os
+import csv, datetime, json, sys, os
 from collections import defaultdict, Counter
 
 G = sys.argv[1]
 OUT = sys.argv[2]
 
-def rd(name):
+def rd(name, optional=False):
+    if optional and not os.path.exists(os.path.join(G, name)):
+        return []
     with open(os.path.join(G, name), encoding='utf-8-sig') as f:
         r = csv.DictReader(f)
         r.fieldnames = [h.strip() for h in r.fieldnames]
@@ -31,7 +33,8 @@ routes = rd('routes.txt')
 stops = rd('stops.txt')
 trips = rd('trips.txt')
 st = rd('stop_times.txt')
-cd = rd('calendar_dates.txt')
+cal = rd('calendar.txt', optional=True)
+cd = rd('calendar_dates.txt', optional=True)
 shapes = rd('shapes.txt')
 
 # stops
@@ -49,7 +52,11 @@ for p in shapes:
 # stop_times per trip
 tt = defaultdict(list)
 for r in st:
-    tt[r['trip_id']].append((int(r['stop_sequence']), r['stop_id'], tsec(r['arrival_time']), tsec(r['departure_time']), float(r['shape_dist_traveled'] or 0)))
+    # GTFS lets non-timepoint stops leave the times blank; fall back to whichever is given
+    arr, dep = r['arrival_time'] or r['departure_time'], r['departure_time'] or r['arrival_time']
+    if not arr:
+        sys.exit('stop_times.txt: trip %s has a stop with no time; interpolation is not supported' % r['trip_id'])
+    tt[r['trip_id']].append((int(r['stop_sequence']), r['stop_id'], tsec(arr), tsec(dep), float(r['shape_dist_traveled'] or 0)))
 
 # services
 svc_idx = {}
@@ -58,10 +65,25 @@ def sid(x):
     if x not in svc_idx:
         svc_idx[x] = len(SV); SV.append(x)
     return svc_idx[x]
-dates = defaultdict(list)
+# active services per date: weekly patterns from calendar.txt, then calendar_dates.txt
+# additions (1) and removals (2)
+day_svc = defaultdict(set)
+WD = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+for r in cal:
+    d = datetime.date(int(r['start_date'][:4]), int(r['start_date'][4:6]), int(r['start_date'][6:]))
+    end = datetime.date(int(r['end_date'][:4]), int(r['end_date'][4:6]), int(r['end_date'][6:]))
+    while d <= end:
+        if r[WD[d.weekday()]] == '1':
+            day_svc[d.strftime('%Y%m%d')].add(r['service_id'])
+        d += datetime.timedelta(days=1)
 for r in cd:
     if r['exception_type'] == '1':
-        dates[r['date']].append(sid(r['service_id']))
+        day_svc[r['date']].add(r['service_id'])
+    elif r['exception_type'] == '2':
+        day_svc[r['date']].discard(r['service_id'])
+if not day_svc:
+    sys.exit('no service dates: the feed has neither calendar.txt nor calendar_dates.txt entries')
+dates = {k: sorted(sid(x) for x in sorted(v)) for k, v in sorted(day_svc.items()) if v}
 
 # patterns
 route_ids = {r['route_id']: i for i, r in enumerate(routes)}
@@ -108,7 +130,7 @@ for p in P:
 R = [[r['route_short_name'], r['route_long_name'], r['route_color'], r['route_text_color']] for r in routes]
 data = {'routes': R, 'stops': S, 'shapes': SH, 'patterns': outP, 'dates': dict(sorted(dates.items())),
         'nsvc': len(SV)}
-with open(OUT, 'w') as f:
+with open(OUT, 'w', encoding='utf-8') as f:
     json.dump(data, f, separators=(',', ':'), ensure_ascii=False)
 print('patterns', len(P), 'shapes', len(SH), 'profiles', sum(len(p[6]) for p in outP), 'size', os.path.getsize(OUT))
 for p in outP:

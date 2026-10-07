@@ -650,7 +650,7 @@ function render(keepScroll){
 }
 /* One history entry per panel level, so the iPhone swipe-back / Android back button steps back
    through the panel (line -> list -> closed) instead of leaving the site. */
-let navDepth=0, ignorePop=false;
+let navDepth=0, ignorePop=false, langHist=false;
 function syncHistory(){
   const target=st.panel?1+st.stack.length:0;
   if(target>navDepth){ for(let i=navDepth;i<target;i++) history.pushState({bb:i+1},''); navDepth=target; }
@@ -658,8 +658,9 @@ function syncHistory(){
 }
 window.addEventListener('popstate',()=>{
   if(ignorePop){ ignorePop=false; return; }
+  /* the language sheet has its own history entry: back closes just the sheet */
+  if(langHist){ langHist=false; openLang(false); return; }
   navDepth=Math.max(0,navDepth-1);
-  if($('#langsheet').classList.contains('open')){ openLang(false); }
   if(st.stack.length) st.stack.pop(); else if(st.panel){ st.panel=false; st.full=false; }
   render(true);
 });
@@ -1201,8 +1202,12 @@ let langTimer=0;
 function openLang(open){
   const sh=$('#langsheet'), bk=$('#langback'); clearTimeout(langTimer);
   if(open){ sh.hidden=false; bk.hidden=false; void sh.offsetWidth; sh.classList.add('open'); bk.classList.add('open');
-    $('#q-lang').value=''; langList(); if(wide()) $('#q-lang').focus(); }
-  else { sh.classList.remove('open'); bk.classList.remove('open'); langTimer=setTimeout(()=>{ sh.hidden=true; bk.hidden=true; },reduceMotion?170:330); $('#langbtn').focus(); }
+    $('#q-lang').value=''; langList(); if(wide()) $('#q-lang').focus();
+    if(!langHist){ history.pushState({bbLang:1},''); langHist=true; } }
+  else {
+    /* closed from the sheet itself: drop its history entry so the next back steps through the panel */
+    if(langHist){ langHist=false; ignorePop=true; history.back(); }
+    sh.classList.remove('open'); bk.classList.remove('open'); langTimer=setTimeout(()=>{ sh.hidden=true; bk.hidden=true; },reduceMotion?170:330); $('#langbtn').focus(); }
 }
 function setLang(c){
   if(!I18N[c]) return; lang=c;
@@ -1221,7 +1226,7 @@ function openLine(r,opts={}){
   else v.d=uniDir(r,ctx());
   if(!active.has(r)){active.add(r);saveActive()}
   st.panel=true; st.stack.push(v); render(); view.scrollTop=0;
-  if(v.hl!=null) requestAnimationFrame(()=>{const p=P.find(q=>q.id===v.p)||null;const el=view.querySelector('.stop.hl');if(el)el.scrollIntoView({block:'center'})});
+  if(v.hl!=null) requestAnimationFrame(()=>{const el=view.querySelector('.stop.hl');if(el)el.scrollIntoView({block:'center'})});
 }
 function openStop(s){st.panel=true;st.stack.push({kind:'stop',s});render();view.scrollTop=0;focusStop(s)}
 
@@ -1261,7 +1266,7 @@ function onSearch(e){
 }
 view.addEventListener('input',onSearch);
 view.addEventListener('compositionend',onSearch);
-$('#day').addEventListener('change',e=>{st.day=+e.target.value;render(true);drawBuses()});
+$('#day').addEventListener('change',e=>{st.day=+e.target.value;render(true);drawBuses();refreshStopPopup()});
 
 applyStatic(); buildDays(); tickClock(); updHdr(); initMap(); applyStatic(); render(); showHint();
 if(window.ResizeObserver) new ResizeObserver(updHdr).observe($('.top'));

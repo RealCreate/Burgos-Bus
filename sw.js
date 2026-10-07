@@ -6,8 +6,13 @@ const PAGE = './';
 const STATIC = ['https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js',
                 './apple-touch-icon.png', './icons/icon-192.png', './icons/icon-512.png', './manifest.webmanifest'];
 
+/* Cache Leaflet and the icons at install too. The page that registers the worker has already
+   loaded them without it, so otherwise they'd only be cached on the next visit, and a home-screen
+   app opened once and then used offline would have no map. One failure mustn't stop the install. */
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll([PAGE])).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(CACHE)
+    .then(c => c.add(PAGE).then(() => Promise.all(STATIC.map(s => c.add(s).catch(() => {})))))
+    .then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', e => {

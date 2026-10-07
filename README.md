@@ -22,6 +22,8 @@ The city publishes timetables as a GTFS file that covers a few months at a time.
 2. Run `python3 tools/build_site.py Google_transit.zip`
 3. Commit the new `index.html`.
 
+After changing only `tools/template.html` or `tools/i18n.js`, run `python3 tools/build_site.py --keep-data` to rebuild with the timetable already in `index.html`.
+
 ## Data
 
 Timetables: Ayuntamiento de Burgos open data (GTFS). Map: © OpenStreetMap contributors, © CARTO.
