@@ -84,7 +84,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .tog{flex:none;border-radius:8px;padding:4px;margin:-4px}
 .tog .badge{transition:background-color .2s,color .2s,transform .15s}
 .tog:active .badge{transform:scale(.92)}
-.bulk{display:flex;gap:8px;margin:12px 0 0}
+.bulk{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 0}
 .bulk .chip{color:var(--accent)}
 
 .list{display:flex;flex-direction:column;background:var(--surface);border-radius:14px;box-shadow:var(--shadow);overflow:hidden}
@@ -194,7 +194,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .lrow[aria-current="true"]{background:color-mix(in srgb,var(--accent) 10%,transparent)}
 /* selected stop: filled in the selection colour, white rim, soft pulsing ring */
 .selstop{pointer-events:none!important}
-.selstop .dot{position:absolute;inset:8px;border-radius:50%;background:var(--sel);box-shadow:0 0 0 3px #fff,0 2px 8px rgba(0,0,0,.45)}
+.selstop .dot{position:absolute;inset:8px;width:auto;height:auto;border:0;border-radius:50%;background:var(--sel);box-shadow:0 0 0 3px #fff,0 2px 8px rgba(0,0,0,.45)}
 .selstop .ring{position:absolute;inset:0;border-radius:50%;border:3px solid var(--sel);opacity:0;animation:selpulse 1.8s ease-out infinite}
 @keyframes selpulse{0%{transform:scale(.45);opacity:.9}100%{transform:scale(1.25);opacity:0}}
 @media (prefers-reduced-motion:reduce){.selstop .ring{animation:none;opacity:.5;transform:scale(.9)}}
@@ -205,7 +205,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .bstat{display:flex;align-items:center;gap:7px;margin:8px 0 2px;font-size:.88rem}
 .bstat .sdot{width:9px;height:9px;border-radius:50%;flex:none;background:var(--muted)}
 .bstat.move .sdot{background:var(--live);animation:pulse 2s infinite}
-.bstat.stop .sdot{background:var(--star)}
+.bstat.atstop .sdot{background:var(--star)}
 .bstat.wait .sdot{background:var(--muted)}
 .bline{font-size:.86rem;margin-bottom:4px}
 .busdet .bar{height:4px;border-radius:2px;background:var(--sunk);margin:5px 0 2px;overflow:hidden}
@@ -227,7 +227,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .pop li b{margin-left:auto;font:700 .95rem var(--font-display);font-variant-numeric:tabular-nums}
 .pop button{font-weight:700;color:var(--accent);font-size:.84rem}
 .pop li{flex-wrap:wrap;row-gap:2px}
-.pop .pl{display:flex;align-items:center;gap:6px;color:var(--ink);font-weight:700;min-width:0;flex:1;text-align:left}
+.pop .pl{display:flex;align-items:center;gap:6px;color:var(--ink);font-weight:700;min-width:0;flex:1 1 8.5em;text-align:left}   /* room for the destination; times wrap below when short of space */
 .pop .ph{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pop .pt{margin-left:auto;font:700 .9rem var(--font-display);font-variant-numeric:tabular-nums;white-space:nowrap}
 /* Leaflet's own .leaflet-bar a rules (display:block, line-height) outrank a plain class, so match their specificity */
@@ -400,6 +400,21 @@ body{font:16px/1.4 var(--font-body);-webkit-font-smoothing:antialiased;letter-sp
 ::view-transition-old(root),::view-transition-new(root){animation:none;mix-blend-mode:normal}
 ::view-transition-new(root){z-index:9999}
 @media (max-width:420px){.top{gap:8px}.brand svg{display:none}}
+/* narrow phones (and long translations): the title and clock stay on one line each instead of
+   wrapping under the day picker, and the Lines/Stops buttons and the hint stop short of the zoom buttons */
+.brand>div{min-width:0}
+.brand>div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.brand small{white-space:normal;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.fab{right:64px;pointer-events:none}
+.fab button{pointer-events:auto;min-width:0}
+.fab button span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hint{max-width:min(300px,calc(100% - 88px))}
+@media (max-width:380px){
+  .fab button{padding:10px 12px;gap:6px}.fab button svg{display:none}
+  .top{padding:8px 10px}.brand{font-size:1.05rem}
+  .day{padding:6px 22px 6px 10px;max-width:118px;background-position:calc(100% - 13px) 55%,calc(100% - 8px) 55%}
+  .langbtn .flag{display:none}}
+@media (max-width:360px){.day{max-width:92px}}
 @media (prefers-reduced-motion:reduce){
   .themebtn svg,.themebtn .rays,.themebtn .core,.themebtn .bite,.themebtn .ring,.themebtn .half{transition:opacity 150ms ease}
   .themetip,.themetip.show{transition:opacity 150ms ease;transform:translate(-50%,0)}}
@@ -651,6 +666,10 @@ function render(keepScroll){
 /* One history entry per panel level, so the iPhone swipe-back / Android back button steps back
    through the panel (line -> list -> closed) instead of leaving the site. */
 let navDepth=0, ignorePop=false, langHist=false;
+/* Reloading keeps the panel entries this page pushed earlier, but the panel starts closed, so each
+   would cost a back press that does nothing. Step back to the page's own entry first. */
+{ const hs=history.state, n=hs&&typeof hs.bb==='number'?hs.bb+(hs.bbLang?1:0):0;
+  if(n>0){ ignorePop=true; history.go(-n); } }
 function syncHistory(){
   const target=st.panel?1+st.stack.length:0;
   if(target>navDepth){ for(let i=navDepth;i<target;i++) history.pushState({bb:i+1},''); navDepth=target; }
@@ -954,7 +973,9 @@ function markSel(){
   const s=S[i];
   L.marker([s.lat,s.lon],{icon:L.divIcon({className:'selstop',html:'<span class="ring"></span><span class="dot"></span>',iconSize:[34,34],iconAnchor:[17,17]}),interactive:false,keyboard:false,zIndexOffset:400}).addTo(ringLayer);
 }
-function stopPop(i){const pp=L.popup({maxWidth:270}).setContent(stopPopup(i));pp._stop=i;return pp}
+/* keep pop-ups clear of the header and the floating Lines/Stops buttons when the map pans to show them */
+const popPad=()=>L.point(16,hdrH()+12+44+16);
+function stopPop(i){const pp=L.popup({maxWidth:270,autoPanPaddingTopLeft:popPad()}).setContent(stopPopup(i));pp._stop=i;return pp}
 function focusStop(i){
   if(!map) return; const s=S[i];
   map.fitBounds(L.latLng(s.lat,s.lon).toBounds(500),Object.assign({maxZoom:17},fitPad()));
@@ -969,6 +990,8 @@ function growStop(m,target){
   m._anim=requestAnimationFrame(step);
 }
 function drawRoutes(sel){
+  /* redrawing removes the stop markers, which closes a stop pop-up bound to one; reopen it after */
+  const pp=map._popup, reopen=pp&&map.hasLayer(pp)&&pp._stop!=null?pp._stop:null;
   if(baseLayer) baseLayer.remove(); if(stopLayer) stopLayer.remove();
   baseLayer=L.layerGroup(); stopLayer=L.layerGroup();
   const r0=sel.r;
@@ -1002,6 +1025,7 @@ function drawRoutes(sel){
     m.addTo(stopLayer);
   }
   baseLayer.addTo(map); stopLayer.addTo(map);
+  if(reopen!=null){ const s=S[reopen]; const np=stopPop(reopen); np.options.autoPan=false; np.setLatLng([s.lat,s.lon]).openOn(map); }
 }
 function stopPopup(i){
   const c=ctx(); const deps=departuresAt(i,c,null,{from:c.from-30});
@@ -1053,7 +1077,8 @@ function locateMe(){
     const km=Math.sqrt(bd)*111;
     if(best>=0&&km<3){ map.setView([S[best].lat,S[best].lon],17); stopPop(best).setLatLng([S[best].lat,S[best].lon]).openOn(map); }
     else { setFollow(true); map.setView(ll,16); }
-  },()=>{ done(); L.popup().setLatLng(map.getCenter()).setContent(`<div class="pop">${T('locOff')}</div>`).openOn(map); },{enableHighAccuracy:true,timeout:10000,maximumAge:5000});
+  },err=>{ done();   /* only "permission denied" means location is off; the rest are timeouts or no fix yet */
+    L.popup().setLatLng(map.getCenter()).setContent(`<div class="pop">${T(err&&err.code===1?'locOff':'locFail')}</div>`).openOn(map); },{enableHighAccuracy:true,timeout:10000,maximumAge:5000});
 }
 function pointAlong(sh,dist){
   const {pts,cum}=SH[sh]; if(dist<=cum[0]) return pts[0]; if(dist>=cum[cum.length-1]) return pts[pts.length-1];
@@ -1083,10 +1108,10 @@ function busPopup(id){
   const cd=k=>{const r=rel(at(k)-N);return r?`${r} · ${hhmm(at(k))}`:hhmm(at(k))};
   let state, line1, from;
   if(a.wait){ state='wait'; line1=T('nextLeaves',{stop:esc(S[p.s[0]].name),time:hhmm(t0)}); from=1; }
-  else if(N-at(a.k)<=20){ state='stop'; line1=T('atStop',{stop:esc(S[p.s[a.k]].name)}); from=a.k+1; }
+  else if(N-at(a.k)<=20){ state='atstop'; line1=T('atStop',{stop:esc(S[p.s[a.k]].name)}); from=a.k+1; }
   else { state='move'; line1=`${T('headingTo',{stop:esc(S[p.s[a.k+1]].name)})} · ${cd(a.k+1)}`; from=a.k+1; }
-  const label={move:'busMoving',stop:'busStopped',wait:'busWaiting'}[state];
-  const nextIdx=a.wait?0:(state==='stop'?a.k:a.k+1);
+  const label={move:'busMoving',atstop:'busStopped',wait:'busWaiting'}[state];
+  const nextIdx=a.wait?0:(state==='atstop'?a.k:a.k+1);
   const ups=[]; for(let k=Math.max(from,state==='move'?a.k+2:from);k<p.s.length&&ups.length<3;k++) ups.push(k);
   const last=p.s.length-1;
   return `<div class="pop busdet"><div class="dyn">
@@ -1113,7 +1138,7 @@ function drawBuses(){
       if(!m){
         const icon=L.divIcon({className:'vehwrap',html:`<div class="veh" style="--c:${x.col};--t:${x.txt}"><span class="hit"></span><div class="rot"><span class="arrow"></span>${BUS_TOP}</div><span class="num">${esc(x.n)}</span></div>`,iconSize:[60,60],iconAnchor:[30,30]});
         m=L.marker(ll,{icon,keyboard:false,title:T('busTitle',{n:x.n,dest:a.p.h}),zIndexOffset:500}).addTo(busLayer);
-        m.bindPopup(()=>{m._ph=busPopup(id);return m._ph},{maxWidth:280,minWidth:220,autoPanPaddingTopLeft:L.point(16,90)});
+        m.bindPopup(()=>{m._ph=busPopup(id);return m._ph},{maxWidth:280,minWidth:220,autoPanPaddingTopLeft:popPad()});
         busMarkers.set(id,m);
       } else m.setLatLng(ll);
       m._a=a;
@@ -1203,7 +1228,7 @@ function openLang(open){
   const sh=$('#langsheet'), bk=$('#langback'); clearTimeout(langTimer);
   if(open){ sh.hidden=false; bk.hidden=false; void sh.offsetWidth; sh.classList.add('open'); bk.classList.add('open');
     $('#q-lang').value=''; langList(); if(wide()) $('#q-lang').focus();
-    if(!langHist){ history.pushState({bbLang:1},''); langHist=true; } }
+    if(!langHist){ history.pushState({bb:navDepth,bbLang:1},''); langHist=true; } }
   else {
     /* closed from the sheet itself: drop its history entry so the next back steps through the panel */
     if(langHist){ langHist=false; ignorePop=true; history.back(); }
@@ -1314,6 +1339,6 @@ setInterval(()=>{ if(!document.hidden) drawBuses(); },1000);
 let lastKey=madridNow().key;
 setInterval(()=>{const k=madridNow().key;if(k!==lastKey){lastKey=k;buildDays();render(true)}},60000);
 /* test hook for the timetable audit; inert unless the page is opened with #audit */
-if(location.hash==='#audit') window.__bb={P,S,R,ctx,activeTrips,upcomingPlan,dayTrips,departuresAt,tripKey,distM,pointAlong};
+if(location.hash==='#audit') window.__bb={P,S,R,ctx,activeTrips,upcomingPlan,dayTrips,departuresAt,tripKey,distM,pointAlong,map:()=>map};
 })();
 </script>
