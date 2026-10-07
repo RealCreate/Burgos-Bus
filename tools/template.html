@@ -231,6 +231,9 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .leaflet-bar a.locate{display:flex;align-items:center;justify-content:center;padding:0;line-height:0;background:var(--surface)!important;color:var(--accent)!important}
 .leaflet-bar a.locate svg{display:block;flex:none}
 .leaflet-bar a.locate.busy svg{animation:pulse 1s infinite}
+.leaflet-bar a.locate.following{background:var(--accent)!important;color:#fff!important}
+.leaflet-bar a.locate svg{transition:transform 300ms var(--ease-out)}
+.leaflet-bar a.locate.following svg{transform:scale(1.08)}
 .me{display:block;width:18px;height:18px;border-radius:50%;background:#1A73E8;border:3px solid #fff;box-shadow:0 0 0 6px rgba(26,115,232,.25)}
 .leaflet-control-attribution{background:color-mix(in srgb,var(--surface) 85%,transparent)!important;color:var(--muted)!important}
 .leaflet-control-attribution a{color:var(--accent)!important}
@@ -903,6 +906,7 @@ function initMap(){
       map.addControl(new Loc());
     }
   }
+  map.on('dragstart',()=>{ if(follow) setFollow(false); });
   busLayer=L.layerGroup().addTo(map); ringLayer=L.layerGroup().addTo(map);
   map.on('popupopen',e=>{if(e.popup._stop!=null){popupStop=e.popup._stop;markSel()}});
   map.on('popupclose',e=>{if(e.popup._stop!=null&&e.popup._stop===popupStop){popupStop=null;markSel()}});
@@ -996,19 +1000,49 @@ function stopPopup(i){
   const rows=[...groups.values()].sort((a,b)=>a.t[0]-b.t[0]).map(g=>`<li><button class="pl" data-line="${g.r}" data-dirp="${g.pid}" data-hl="${i}">${badge(g.r,'sm')}<span class="ph">${esc(g.h)}</span></button><span class="pt">${g.t.map((tm,n)=>{const df=tm-c.nowSec;return n===0&&c.live&&df<60?T('due'):n===0&&c.live&&df<=1200?T('min',{n:Math.floor(df/60)}):hhmm(tm)}).join(' · ')}</span></li>`).join('');
   return `<div class="pop"><h4>${esc(S[i].name)}</h4><div class="code">${T('stopCode',{code:esc(S[i].code)})} · ${c.live?T('nextBuses'):prettyKey(c.key)}</div><ul>${rows||`<li>${T(c.live?'noMoreToday':'noBusesDay')}</li>`}</ul>${served.length?`<div class="code" style="margin-bottom:6px">${T('alsoStops')} ${served.map(r=>badge(r,'sm')).join(' ')}</div>`:''}<button data-stop="${i}">${T('fullTT')}</button></div>`;
 }
-let meMarker=null;
+/* Your location: the first tap finds you and opens the nearest stop; from then on the dot
+   follows you live (watchPosition), gliding between fixes. Tapping again centres the map on you
+   and keeps it there until you drag the map. Tracking pauses while the page is in the background. */
+let meMarker=null, meAcc=null, meLL=null, meAnim=0, watchId=null, follow=false;
+function setFollow(v){ follow=v; const b=document.querySelector('.locate'); if(b) b.classList.toggle('following',v); }
+function placeMe(ll,acc){
+  acc=Math.min(acc||0,400);
+  if(!meMarker){
+    meAcc=L.circle(ll,{radius:acc,color:'#0A84FF',weight:1,opacity:.35,fillColor:'#0A84FF',fillOpacity:.1,interactive:false}).addTo(map);
+    meMarker=L.marker(ll,{icon:L.divIcon({className:'',html:'<span class="me"></span>',iconSize:[18,18],iconAnchor:[9,9]}),keyboard:false,interactive:false,zIndexOffset:900,title:T('here')}).addTo(map);
+    meLL=ll; return;
+  }
+  meAcc.setRadius(acc);
+  const from=meMarker.getLatLng(), t0=performance.now(), D=reduceMotion?0:900;
+  cancelAnimationFrame(meAnim);
+  const step=now=>{ const f=D?Math.min(1,(now-t0)/D):1, e=1-Math.pow(1-f,3);
+    const q=[from.lat+(ll[0]-from.lat)*e, from.lng+(ll[1]-from.lng)*e];
+    meMarker.setLatLng(q); meAcc.setLatLng(q); if(f<1) meAnim=requestAnimationFrame(step); };
+  meAnim=requestAnimationFrame(step);
+  meLL=ll;
+  if(follow) map.panTo(ll,{animate:!reduceMotion,duration:.9});
+}
+function startWatch(){
+  if(watchId!=null||!navigator.geolocation) return;
+  watchId=navigator.geolocation.watchPosition(
+    pos=>placeMe([pos.coords.latitude,pos.coords.longitude],pos.coords.accuracy),
+    err=>{ if(err.code===1){ stopWatch(); setFollow(false); } },   /* permission withdrawn; other errors are transient */
+    {enableHighAccuracy:true,maximumAge:3000,timeout:20000});
+}
+function stopWatch(){ if(watchId!=null){ navigator.geolocation.clearWatch(watchId); watchId=null; } }
+document.addEventListener('visibilitychange',()=>{ if(!meMarker) return; if(document.hidden) stopWatch(); else startWatch(); });
 function locateMe(){
+  if(meLL){ setFollow(true); map.setView(meLL,Math.max(map.getZoom(),16),{animate:!reduceMotion}); startWatch(); return; }
   const btn=document.querySelector('.locate'); if(btn) btn.classList.add('busy');
   const done=()=>{ if(btn) btn.classList.remove('busy'); };
   navigator.geolocation.getCurrentPosition(pos=>{ done();
     const ll=[pos.coords.latitude,pos.coords.longitude];
-    if(meMarker) meMarker.remove();
-    meMarker=L.marker(ll,{icon:L.divIcon({className:'',html:'<span class="me"></span>',iconSize:[18,18],iconAnchor:[9,9]}),keyboard:false,title:T('here')}).addTo(map);
+    placeMe(ll,pos.coords.accuracy); startWatch();
     let best=-1,bd=1e9; S.forEach((s,i)=>{if(!stopRefs[i].length)return;const d=(s.lat-ll[0])**2+((s.lon-ll[1])*Math.cos(ll[0]*Math.PI/180))**2;if(d<bd){bd=d;best=i}});
     const km=Math.sqrt(bd)*111;
     if(best>=0&&km<3){ map.setView([S[best].lat,S[best].lon],17); stopPop(best).setLatLng([S[best].lat,S[best].lon]).openOn(map); }
-    else map.setView(ll,15);
-  },()=>{ done(); L.popup().setLatLng(map.getCenter()).setContent(`<div class="pop">${T('locOff')}</div>`).openOn(map); },{enableHighAccuracy:true,timeout:10000,maximumAge:30000});
+    else { setFollow(true); map.setView(ll,16); }
+  },()=>{ done(); L.popup().setLatLng(map.getCenter()).setContent(`<div class="pop">${T('locOff')}</div>`).openOn(map); },{enableHighAccuracy:true,timeout:10000,maximumAge:5000});
 }
 function pointAlong(sh,dist){
   const {pts,cum}=SH[sh]; if(dist<=cum[0]) return pts[0]; if(dist>=cum[cum.length-1]) return pts[pts.length-1];
