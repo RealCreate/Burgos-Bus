@@ -1,4 +1,6 @@
 <title>Burgos Bus</title>
+<link rel="preconnect" href="https://basemaps.cartocdn.com">
+<link rel="dns-prefetch" href="https://basemaps.cartocdn.com">
 <script>try{var t=localStorage.getItem('burgosbus-theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}</script>
 <style>
 /* Layout: the map is the app. Header, buttons, panels and pop-ups float over it as translucent
@@ -918,7 +920,16 @@ function initMap(){
   if(STANDALONE){
     const isDark=()=>document.documentElement.dataset.theme==='dark'||(document.documentElement.dataset.theme!=='light'&&matchMedia('(prefers-color-scheme: dark)').matches);
     let tiles=null;
-    const mkTiles=()=>L.tileLayer(`https://basemaps.cartocdn.com/rastertiles/${isDark()?'dark_all':'light_all'}/{z}/{x}/{y}{r}.png?key=${CARTO_KEY}`,{maxZoom:19,attribution:'© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>'}).addTo(map);
+    const mkTiles=()=>L.tileLayer(`https://basemaps.cartocdn.com/rastertiles/${isDark()?'dark_all':'light_all'}/{z}/{x}/{y}{r}.png?key=${CARTO_KEY}`,{maxZoom:19,updateWhenIdle:false,updateInterval:100,keepBuffer:6,attribution:'© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>'}).addTo(map);
+    /* Fetch one extra ring of tiles beyond the screen edge, so dragging reveals map that is already
+       loaded instead of blank squares (Leaflet otherwise loads only what is visible). */
+    const tsz=256;
+    L.TileLayer.prototype._getTiledPixelBounds=function(center){
+      const m=this._map, z=m._animatingZoom?Math.max(m._animateToZoom,m.getZoom()):m.getZoom(),
+        scale=m.getZoomScale(z,this._tileZoom), px=m.project(center,this._tileZoom).floor(),
+        half=m.getSize().divideBy(scale*2).add([tsz,tsz]);
+      return new L.Bounds(px.subtract(half),px.add(half));
+    };
     tiles=mkTiles();
     /* keep the old tiles underneath until the new set has loaded, so the map never flashes blank */
     themeChanged=()=>new Promise(res=>{
