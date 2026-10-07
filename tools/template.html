@@ -937,6 +937,7 @@ function initMap(){
     }
   }
   map.on('dragstart',()=>{ if(follow) setFollow(false); });
+  map.on('zoomend',styleStops);
   busLayer=L.layerGroup().addTo(map); ringLayer=L.layerGroup().addTo(map);
   map.on('popupopen',e=>{if(e.popup._stop!=null){popupStop=e.popup._stop;markSel()}});
   map.on('popupclose',e=>{if(e.popup._stop!=null&&e.popup._stop===popupStop){popupStop=null;markSel()}});
@@ -989,11 +990,27 @@ function growStop(m,target){
   const step=now=>{const k=Math.min(1,(now-t0)/dur), e=1-Math.pow(1-k,3);m.setRadius(from+(target-from)*e);if(k<1)m._anim=requestAnimationFrame(step);else m._anim=null};
   m._anim=requestAnimationFrame(step);
 }
+/* Stops fade in with zoom, as in transit apps: zoomed out the city would be a solid blob of circles
+   hiding the routes. The open line's stops always show, shrunk; the rest appear from neighbourhood
+   zoom (from street zoom while a line is open) and reach full size at street level. */
+let stopMarkers=[];
+const stopScale=z=>z>=16?1:z>=15?.85:z>=14?.65:z>=13?.5:.4;
+function styleStops(){
+  if(!map||!stopLayer) return;
+  const z=map.getZoom(), k=stopScale(z), lineOpen=selection().r>=0;
+  for(const m of stopMarkers){
+    const b=m._b, show=b.on||z>=(lineOpen?15:14)||m.isPopupOpen();
+    if(show!==stopLayer.hasLayer(m)){ if(show) stopLayer.addLayer(m); else stopLayer.removeLayer(m); }
+    if(!show) continue;
+    m._r=b.base*(b.on?Math.max(k,.6):k); if(!m._anim) m.setRadius(m._r);
+    m.setStyle({weight:Math.max(1,b.weight*Math.max(k,.6))});
+  }
+}
 function drawRoutes(sel){
   /* redrawing removes the stop markers, which closes a stop pop-up bound to one; reopen it after */
   const pp=map._popup, reopen=pp&&map.hasLayer(pp)&&pp._stop!=null?pp._stop:null;
   if(baseLayer) baseLayer.remove(); if(stopLayer) stopLayer.remove();
-  baseLayer=L.layerGroup(); stopLayer=L.layerGroup();
+  baseLayer=L.layerGroup(); stopLayer=L.layerGroup(); stopMarkers=[];
   const r0=sel.r;
   const shown=shownLines();
   const order=R.map(r=>r.i).filter(i=>i!==r0&&shown.has(i)); if(r0>=0) order.push(r0);
@@ -1020,11 +1037,12 @@ function drawRoutes(sel){
     const on=lineStops.has(i), faded=r0>=0&&!on;
     const base=on?6:(faded?3.5:4.5);
     const m=L.circleMarker([S[i].lat,S[i].lon],{radius:base,color:on?R[r0].col:(faded?mut:ink),weight:on?3:1.5,opacity:faded?.55:1,fillColor:surf,fillOpacity:faded?.7:1});
+    m._b={base,weight:on?3:1.5,on,faded};
     m.on('click',()=>{m.bindPopup(stopPop(i)).openPopup()});
-    if(canHover){ m.on('mouseover',()=>growStop(m,base*1.8)); m.on('mouseout',()=>growStop(m,base)); }
-    m.addTo(stopLayer);
+    if(canHover){ m.on('mouseover',()=>growStop(m,m._r*1.8)); m.on('mouseout',()=>growStop(m,m._r)); }
+    stopMarkers.push(m);
   }
-  baseLayer.addTo(map); stopLayer.addTo(map);
+  baseLayer.addTo(map); stopLayer.addTo(map); styleStops();
   if(reopen!=null){ const s=S[reopen]; const np=stopPop(reopen); np.options.autoPan=false; np.setLatLng([s.lat,s.lon]).openOn(map); }
 }
 function stopPopup(i){
