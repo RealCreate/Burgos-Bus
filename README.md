@@ -10,13 +10,17 @@ Live site: https://realcreate.github.io/Burgos-Bus/
 - **Stops**: search by name or stop code for a departure board of every line.
 - **Map**: routes over a street map of Burgos. Tap a stop to see which lines stop there and their next times. The location button finds your nearest stop.
 - Favourite lines and stops are saved on your device.
-- **Install it**: in Safari tap Share → Add to Home Screen. It opens full-screen with the bus icon, and lines, stops and timetables keep working offline (the street map needs a connection).
+- **Links**: the address always matches what's open (`#stop=PA00305`, `#line=05&dir=1`), and the share button sends it, so you can share or bookmark a stop or line.
+- The last bus of the day on each line and direction is labelled, and once the location button has found you, lines open scrolled to your nearest stop.
+- **Install it**: in Safari tap Share → Add to Home Screen. It opens full-screen with the bus icon, and lines, stops and timetables keep working offline, and so do the parts of the street map you've already looked at.
 
 Bus positions are estimated from the timetable. Burgos does not currently publish a public live GPS feed.
 
 ## Updating the timetable
 
-The city publishes timetables as a GTFS file that covers a few months at a time. When it runs out:
+The city publishes timetables as a GTFS file that covers a few months at a time. A GitHub Action (`.github/workflows/update-timetable.yml`) downloads it every Monday and Thursday, rebuilds the site and publishes it only if the timetable actually changed. A file that looks broken (empty, or ending earlier than the current one) is never published; the run fails instead and GitHub emails you. You can also start it from the Actions tab.
+
+To do it by hand:
 
 1. Download https://www.aytoburgos.es/GTFS/Google_transit.zip
 2. Run `python3 tools/build_site.py Google_transit.zip`

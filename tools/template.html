@@ -402,6 +402,21 @@ body{font:16px/1.4 var(--font-body);-webkit-font-smoothing:antialiased;letter-sp
 ::view-transition-old(root),::view-transition-new(root){animation:none;mix-blend-mode:normal}
 ::view-transition-new(root){z-index:9999}
 @media (max-width:420px){.top{gap:8px}.brand svg{display:none}}
+/* last bus of the day, nearest stop to you, share button and its confirmation */
+.lastbus{display:inline-block;font:600 .68rem/1.4 var(--font-body);letter-spacing:0;padding:0 6px;border-radius:999px;vertical-align:1px;
+  background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)}
+.tm em.lastbus{font-style:normal;opacity:1;margin-left:6px;background:var(--surface);color:var(--warn)}
+.tm.next em.lastbus{background:#fff;color:var(--warn)}
+.pop small.lastbus{font-size:.66rem}
+.nearyou{display:inline-block;margin-left:8px;font:600 .68rem/1.4 var(--font-body);padding:0 6px;border-radius:999px;background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent);vertical-align:1px}
+.stop.near .dot{box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 35%,transparent)}
+.dhead .share{color:var(--accent)}
+.toast{position:absolute;z-index:2100;left:50%;bottom:calc(28px + env(safe-area-inset-bottom,0px));transform:translate(-50%,8px);opacity:0;
+  padding:9px 16px;border-radius:999px;font:600 .86rem var(--font-body);color:var(--ink);background:var(--glass);
+  -webkit-backdrop-filter:blur(22px) saturate(180%);backdrop-filter:blur(22px) saturate(180%);border:.5px solid var(--glass-edge);box-shadow:var(--float);
+  transition:opacity 180ms ease,transform 240ms var(--ease-out);pointer-events:none;white-space:nowrap}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.toast[hidden]{display:none!important}
 /* narrow phones (and long translations): the title and clock stay on one line each instead of
    wrapping under the day picker, and the Lines/Stops buttons and the hint stop short of the zoom buttons */
 .brand>div{min-width:0}
@@ -441,6 +456,7 @@ body{font:16px/1.4 var(--font-body);-webkit-font-smoothing:antialiased;letter-sp
     </div>
     <div class="hint" id="hint" hidden role="status"><span data-i18n="pickHint">Choose your lines to see them on the map</span><button class="x" id="hintx" data-i18n-aria="close" aria-label="Close"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
     <div class="selchip" id="selchip" hidden></div>
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
     <aside class="panel" id="panel" aria-label="Lines and stops" data-i18n-aria="panelAria" hidden>
       <div class="pbar"><span class="grabber" aria-hidden="true"></span>
         <button class="ibtn grab" id="grow" aria-label="Expand panel"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m6 15 6-6 6 6"/></svg></button>
@@ -481,6 +497,7 @@ const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const BUS_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v12H6zM6 11h12M8 17v2M16 17v2"/></svg>';
 const CHEV = '<svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m9 6 6 6-6 6"/></svg>';
+const SHARE = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4M6 11H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-1"/></svg>';
 const BACK = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m15 5-7 7 7 7"/></svg>';
 
 /* ---------- data prep ---------- */
@@ -517,10 +534,33 @@ function svcSet(k){const rk=resolveKey(k).key;return svcCache[rk]||(svcCache[rk]
 const tripCache = new Map();
 function tripsOn(p,k){const id=p.id+'|'+resolveKey(k).key;let v=tripCache.get(id);if(!v){const set=svcSet(k);v=p.trips.filter(t=>set.has(t.svc));tripCache.set(id,v)}return v}
 const hhmm = s => {s=((s%86400)+86400)%86400;return String(Math.floor(s/3600)).padStart(2,'0')+':'+String(Math.floor(s%3600/60)).padStart(2,'0')};
+/* last departure of the service day for each line and direction at a stop, from a full day's list */
+function lastTimes(all){ const m=new Map(); for(const d of all){ if(d.tmrw) continue; const k=d.p.r+'|'+d.p.d+'|'+d.off; if(!(m.get(k)>=d.tm)) m.set(k,d.tm); } return m; }
+const isLast=(d,m)=>!d.tmrw&&m.get(d.p.r+'|'+d.p.d+'|'+d.off)===d.tm;
 function rel(diff){if(diff<60)return T('due');const m=Math.floor(diff/60);if(m<60)return T('min',{n:m});return null}
 
 /* ---------- state ---------- */
 const st = { tab:'lines', stack:[], day:0, q:'', sq:'', panel:false, full:false };
+/* Shareable links: the address shows what is open (#stop=PA00305, #line=05&dir=1), so it can be
+   copied, shared or bookmarked, and opening it lands on that stop or line. */
+const AUDIT=location.hash==='#audit', START_HASH=location.hash;
+function linkHash(){
+  const top=st.panel?st.stack[st.stack.length-1]:null;
+  if(top&&top.kind==='line') return '#line='+encodeURIComponent(R[top.r].n)+'&dir='+top.d;
+  if(top&&top.kind==='stop') return '#stop='+encodeURIComponent(S[top.s].code);
+  return '';
+}
+function syncLink(){
+  if(AUDIT) return; const h=linkHash();
+  if(location.hash!==h) try{ history.replaceState(history.state,'',location.pathname+location.search+h); }catch(e){}
+}
+/* opens the stop or line named in a link; false when there is nothing (valid) to open */
+function openFromHash(hash){
+  const q=new URLSearchParams((hash||'').replace(/^#/,''));
+  if(q.has('stop')){ const i=S.findIndex(x=>x.code===q.get('stop')); if(i>=0&&stopRefs[i].length){ openStop(i); return true; } }
+  if(q.has('line')){ const r=R.findIndex(x=>x.n===q.get('line')); if(r>=0){ openLine(r,{dir:q.has('dir')?+q.get('dir'):null}); return true; } }
+  return false;
+}
 let fav = {lines:[],stops:[]};
 try{const v=JSON.parse(localStorage.getItem('burgosbus-fav')||'null');if(v&&Array.isArray(v.lines)&&Array.isArray(v.stops))fav=v}catch(e){}
 function saveFav(){try{localStorage.setItem('burgosbus-fav',JSON.stringify(fav))}catch(e){}}
@@ -664,6 +704,7 @@ function render(keepScroll){
   navPrev={open:st.panel,depth:st.stack.length};
   syncMap();
   syncHistory();
+  syncLink();
 }
 /* One history entry per panel level, so the iPhone swipe-back / Android back button steps back
    through the panel (line -> list -> closed) instead of leaving the site. */
@@ -671,7 +712,8 @@ let navDepth=0, ignorePop=false, langHist=false;
 /* Reloading keeps the panel entries this page pushed earlier, but the panel starts closed, so each
    would cost a back press that does nothing. Step back to the page's own entry first. */
 { const hs=history.state, n=hs&&typeof hs.bb==='number'?hs.bb+(hs.bbLang?1:0):0;
-  if(n>0){ ignorePop=true; history.go(-n); } }
+  /* reloading on a stop or line link reopens it, so keep those entries instead (syncHistory trims any extra) */
+  if(n>0){ if(/^#(line|stop)=/.test(location.hash)) navDepth=n; else { ignorePop=true; history.go(-n); } } }
 function syncHistory(){
   const target=st.panel?1+st.stack.length:0;
   if(target>navDepth){ for(let i=navDepth;i<target;i++) history.pushState({bb:i+1},''); navDepth=target; }
@@ -804,8 +846,11 @@ function lineView(v){
   const running=dirPats.filter(p=>tripsOn(p,c.key).length);
   const variants=(running.length?running:dirPats).slice().sort((a,b)=>tripsOn(b,c.key).length-tripsOn(a,c.key).length||b.s.length-a.s.length);
   let p=variants.find(q=>q.id===v.p)||variants[0]; v.p=p.id;
+  /* with your location known, mark the stop on this route nearest to you (within walking distance) */
+  let nearI=-1;
+  if(meLL){ let bd=1200; p.s.forEach((s,i)=>{ const dd=distM(S[s].lat,S[s].lon,meLL[0],meLL[1]); if(dd<bd){bd=dd;nearI=i} }); }
   const on=fav.lines.includes(r);
-  let h=`<div class="dhead" style="--rc:${x.col}"><button class="back" data-back aria-label="${T('back')}">${BACK}</button>${badge(r,'lg')}<div class="main"><h2>${esc(x.name)}</h2><div class="sub">${c.live?T('today'):prettyKey(c.key)}</div></div><button class="star ${on?'on':''}" data-fav-line="${r}" aria-label="${T(on?'favRemove':'favAdd')}">★</button></div><div class="pad">${fallbackBanner(c)}`;
+  let h=`<div class="dhead" style="--rc:${x.col}"><button class="back" data-back aria-label="${T('back')}">${BACK}</button>${badge(r,'lg')}<div class="main"><h2>${esc(x.name)}</h2><div class="sub">${c.live?T('today'):prettyKey(c.key)}</div></div><button class="ibtn share" data-share aria-label="${T('share')}">${SHARE}</button><button class="star ${on?'on':''}" data-fav-line="${r}" aria-label="${T(on?'favRemove':'favAdd')}">★</button></div><div class="pad">${fallbackBanner(c)}`;
   if(dirs.length>1){
     h+=`<div class="seg" role="group" aria-label="${T('direction')}">${dirs.map(d=>{const mp=mainPattern(pats.filter(q=>q.d===d),c);return `<button data-dir="${d}" aria-pressed="${d===v.d}">${T('to',{dest:esc(mp.h)})}<span>${T('from',{stop:esc(S[mp.s[0]].name)})}</span></button>`}).join('')}</div>`;
   }
@@ -834,14 +879,15 @@ function lineView(v){
   p.s.forEach((s,i)=>{
     const last=i===p.s.length-1;
     const deps=departuresAt(s,c,filt,{from:c.from-30,terminus:last});
-    const shown=deps.slice(0,3);
+    const shown=deps.slice(0,3), lastM=lastTimes(departuresAt(s,c,filt,{from:-1e9,terminus:last}));
     let times='';
     if(shown.length) times=shown.map((d,n)=>{
       const diff=d.tm-c.nowSec, other=d.p.h!==p.h?`<em>→ ${esc(d.p.h)}</em>`:'';
       let txt=hhmm(d.tm);
       if(c.live&&n===0){ if(diff<60) txt=T('due'); else if(diff<=1200) txt=T('min',{n:Math.floor(diff/60)})+'<em>'+hhmm(d.tm)+'</em>'; }
       const tm1=d.tmrw&&!(n>0&&shown[n-1].tmrw)?`<em>${T('tomorrow')}</em>`:'';
-      return `<span class="tm ${n===0?'next':''} ${d.tmrw?'tmrw':''}">${txt}${tm1}${other}</span>`;
+      const lb=isLast(d,lastM)?`<em class="lastbus">${T('lastBus')}</em>`:'';
+      return `<span class="tm ${n===0?'next':''} ${d.tmrw?'tmrw':''}">${txt}${tm1}${other}${lb}</span>`;
     }).join('');
     else times=`<span class="tm none">${T(c.live?'noMoreToday':'noBusesDay')}</span>`;
     const xf=stopRoutes[s].filter(q=>q!==r).map(q=>badge(q,'sm')).join('');
@@ -854,7 +900,7 @@ function lineView(v){
     }
     let buses='';
     (busAt[i]||[]).forEach(a=>{buses+=`<span class="bus${a.wait?' parked':''}" style="top:calc(21px + ${(a.f*100).toFixed(1)}%)" title="${T('between',{a:esc(S[p.s[i]].name),b:esc(S[p.s[i+1]]?.name||'')})}">${BUS_SVG}</span>`});
-    h+=`<div class="stop ${i===0?'first':''} ${last?'last':''} ${v.hl===s?'hl':''}" id="st-${i}"><span class="dot"></span>${buses}<button class="nm" data-open="${i}" aria-expanded="${open}"><b>${esc(S[s].name)}</b><span class="code">${esc(S[s].code)}</span></button>${xf?`<div class="xfer">${xf}</div>`:''}<div class="times">${times}</div>${full}</div>`;
+    h+=`<div class="stop ${i===0?'first':''} ${last?'last':''} ${v.hl===s?'hl':''} ${i===nearI?'near':''}" id="st-${i}"><span class="dot"></span>${buses}<button class="nm" data-open="${i}" aria-expanded="${open}"><b>${esc(S[s].name)}</b><span class="code">${esc(S[s].code)}</span>${i===nearI?`<span class="nearyou">${T('nearYou')}</span>`:''}</button>${xf?`<div class="xfer">${xf}</div>`:''}<div class="times">${times}</div>${full}</div>`;
   });
   h+=`</div><p class="note">${T('tapStop')}</p></div>`;
   return h;
@@ -877,8 +923,8 @@ function stopsResults(){
 
 function stopView(v){
   const c=ctx(); const s=S[v.s]; const on=fav.stops.includes(v.s);
-  const deps=departuresAt(v.s,c,null,{from:c.from-30}).slice(0,c.live?40:1000);
-  let h=`<div class="dhead"><button class="back" data-back aria-label="${T('back')}">${BACK}</button><div class="main"><h2>${esc(s.name)}</h2><div class="sub">${T('stopCode',{code:esc(s.code)})} · ${c.live?T('nextDeps'):prettyKey(c.key)}</div></div><button class="star ${on?'on':''}" data-fav-stop="${v.s}" aria-label="${T(on?'favRemove':'favAdd')}">★</button></div><div class="pad">${fallbackBanner(c)}`;
+  const deps=departuresAt(v.s,c,null,{from:c.from-30}).slice(0,c.live?40:1000), lastM=lastTimes(departuresAt(v.s,c,null,{from:-1e9}));
+  let h=`<div class="dhead"><button class="back" data-back aria-label="${T('back')}">${BACK}</button><div class="main"><h2>${esc(s.name)}</h2><div class="sub">${T('stopCode',{code:esc(s.code)})} · ${c.live?T('nextDeps'):prettyKey(c.key)}</div></div><button class="ibtn share" data-share aria-label="${T('share')}">${SHARE}</button><button class="star ${on?'on':''}" data-fav-stop="${v.s}" aria-label="${T(on?'favRemove':'favAdd')}">★</button></div><div class="pad">${fallbackBanner(c)}`;
   h+=`<div class="xfer" style="gap:6px;margin:0 0 6px">${stopRoutes[v.s].map(r=>`<button data-line="${r}" data-hl="${v.s}">${badge(r)}</button>`).join('')}</div>`;
   h+=`<a class="linkbtn" href="https://maps.apple.com/?ll=${s.lat},${s.lon}&q=${encodeURIComponent(s.name)}" target="_blank" rel="noopener">${T('apple')}</a><a class="linkbtn" href="https://www.google.com/maps/search/?api=1&query=${s.lat},${s.lon}" target="_blank" rel="noopener">${T('google')}</a>`;
   h+=`<div class="eyebrow">${T('departures')}</div><div class="list">`;
@@ -889,7 +935,7 @@ function stopView(v){
     const diff=d.tm-c.nowSec; const rl=c.live?rel(diff):null;
     const big=rl&&diff<=1200?rl:hhmm(d.tm);
     const small=big===hhmm(d.tm)?(rl||''):hhmm(d.tm);
-    h+=`<button class="dep" data-line="${d.p.r}" data-dirp="${d.p.id}" data-hl="${v.s}">${badge(d.p.r)}<div class="main"><div class="hs">${esc(d.p.h)}</div><div class="via">${esc(R[d.p.r].name)}</div></div><div class="when ${rl&&diff<=600?'soon':''}">${big}${small?`<small>${small}</small>`:''}</div></button>`;
+    h+=`<button class="dep" data-line="${d.p.r}" data-dirp="${d.p.id}" data-hl="${v.s}">${badge(d.p.r)}<div class="main"><div class="hs">${esc(d.p.h)}${isLast(d,lastM)?` <span class="lastbus">${T('lastBus')}</span>`:''}</div><div class="via">${esc(R[d.p.r].name)}</div></div><div class="when ${rl&&diff<=600?'soon':''}">${big}${small?`<small>${small}</small>`:''}</div></button>`;
   });
   h+=`</div><p class="note">${T('stopNote')}</p></div>`;
   return h;
@@ -1069,11 +1115,11 @@ function drawRoutes(sel){
   if(reopen!=null){ const s=S[reopen]; const np=stopPop(reopen); np.options.autoPan=false; np.setLatLng([s.lat,s.lon]).openOn(map); }
 }
 function stopPopup(i){
-  const c=ctx(); const deps=departuresAt(i,c,null,{from:c.from-30});
+  const c=ctx(); const deps=departuresAt(i,c,null,{from:c.from-30}), lastM=lastTimes(departuresAt(i,c,null,{from:-1e9}));
   const groups=new Map();
   for(const d of deps){const k=d.p.r+'|'+d.p.h;if(!groups.has(k))groups.set(k,{r:d.p.r,h:d.p.h,pid:d.p.id,t:[]});const g=groups.get(k);if(g.t.length<3)g.t.push(d)}
   const served=stopRoutes[i].filter(r=>![...groups.values()].some(g=>g.r===r));
-  const rows=[...groups.values()].sort((a,b)=>a.t[0].tm-b.t[0].tm).map(g=>`<li><button class="pl" data-line="${g.r}" data-dirp="${g.pid}" data-hl="${i}">${badge(g.r,'sm')}<span class="ph">${esc(g.h)}</span></button><span class="pt">${g.t.map((d,n)=>{const tm=d.tm,df=tm-c.nowSec;const tag=d.tmrw&&!(n>0&&g.t[n-1].tmrw)?`<small class="tmrw">${T('tomorrow')}</small> `:'';return tag+(n===0&&c.live&&df<60?T('due'):n===0&&c.live&&df<=1200?T('min',{n:Math.floor(df/60)}):hhmm(tm))}).join(' · ')}</span></li>`).join('');
+  const rows=[...groups.values()].sort((a,b)=>a.t[0].tm-b.t[0].tm).map(g=>`<li><button class="pl" data-line="${g.r}" data-dirp="${g.pid}" data-hl="${i}">${badge(g.r,'sm')}<span class="ph">${esc(g.h)}</span></button><span class="pt">${g.t.map((d,n)=>{const tm=d.tm,df=tm-c.nowSec;const tag=(d.tmrw&&!(n>0&&g.t[n-1].tmrw)?`<small class="tmrw">${T('tomorrow')}</small> `:'')+(isLast(d,lastM)?`<small class="lastbus">${T('lastBus')}</small> `:'');return tag+(n===0&&c.live&&df<60?T('due'):n===0&&c.live&&df<=1200?T('min',{n:Math.floor(df/60)}):hhmm(tm))}).join(' · ')}</span></li>`).join('');
   return `<div class="pop"><h4>${esc(S[i].name)}</h4><div class="code">${T('stopCode',{code:esc(S[i].code)})} · ${c.live?T('nextBuses'):prettyKey(c.key)}</div><ul>${rows||`<li>${T(c.live?'noMoreToday':'noBusesDay')}</li>`}</ul>${served.length?`<div class="code" style="margin-bottom:6px">${T('alsoStops')} ${served.map(r=>badge(r,'sm')).join(' ')}</div>`:''}<button data-stop="${i}">${T('fullTT')}</button></div>`;
 }
 /* Your location: the first tap finds you and opens the nearest stop; from then on the dot
@@ -1289,17 +1335,31 @@ function openLine(r,opts={}){
   const v={kind:'line',r,d:0,p:null,open:null,hl:opts.hl??null};
   /* lines always open heading to the university first; only a specific bus keeps its own direction */
   if(opts.pat!=null&&opts.keep){const p=P[opts.pat];v.d=p.d;v.p=p.id}
+  else if(opts.dir!=null&&routeP[r].some(p=>p.d===opts.dir)) v.d=opts.dir;
   else v.d=uniDir(r,ctx());
   if(!active.has(r)){active.add(r);saveActive()}
   st.panel=true; st.stack.push(v); render(); view.scrollTop=0;
-  if(v.hl!=null) requestAnimationFrame(()=>{const el=view.querySelector('.stop.hl');if(el)el.scrollIntoView({block:'center'})});
+  /* scroll to the stop you came from, or else to the one nearest you */
+  requestAnimationFrame(()=>{const el=view.querySelector(v.hl!=null?'.stop.hl':'.stop.near');if(el)el.scrollIntoView({block:'center'})});
 }
+function shareCurrent(){
+  syncLink(); const top=st.stack[st.stack.length-1]; if(!top) return;
+  const url=location.href, title=top.kind==='line'?`${R[top.r].n} ${R[top.r].name} · Burgos Bus`:`${S[top.s].name} · Burgos Bus`;
+  if(navigator.share){ navigator.share({title,url}).catch(()=>{}); return; }
+  const done=()=>toast(T('linkCopied'));
+  if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(done,()=>prompt(T('share'),url));
+  else prompt(T('share'),url);
+}
+let toastTimer=0;
+function toast(msg){ const el=$('#toast'); el.textContent=msg; el.hidden=false; void el.offsetWidth; el.classList.add('show');
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>{ el.classList.remove('show'); setTimeout(()=>{el.hidden=true},250); },1800); }
 function openStop(s){st.panel=true;st.stack.push({kind:'stop',s});render();view.scrollTop=0;focusStop(s)}
 
 document.addEventListener('click',e=>{
   const t=e.target.closest('button,a'); if(!t) return;
   if(t.dataset.tab){st.tab=t.dataset.tab;st.stack=[];render();view.scrollTop=0;return}
   if(t.hasAttribute('data-back')){st.stack.pop();render();return}
+  if(t.hasAttribute('data-share')){shareCurrent();return}
   if(t.dataset.favLine!=null){toggleFav('lines',+t.dataset.favLine,t);return}
   if(t.dataset.favStop!=null){toggleFav('stops',+t.dataset.favStop,t);return}
   if(t.dataset.openpanel!=null){const w=t.dataset.openpanel;st.panel=true;if(w!=='current'){st.tab=w;st.stack=[]}render();view.scrollTop=0;return}
@@ -1319,7 +1379,7 @@ document.addEventListener('click',e=>{
   if(t.dataset.stop!=null){if(map)map.closePopup();openStop(+t.dataset.stop);return}
   const top=st.stack[st.stack.length-1];
   if(top&&top.kind==='line'){
-    if(t.dataset.dir!=null){top.d=+t.dataset.dir;top.p=null;top.open=null;render();view.scrollTop=0;return}
+    if(t.dataset.dir!=null){top.d=+t.dataset.dir;top.p=null;top.open=null;render();view.scrollTop=0;const el=top.hl==null&&view.querySelector('.stop.near');if(el)el.scrollIntoView({block:'center'});return}
     if(t.dataset.pat!=null){top.p=+t.dataset.pat;top.open=null;render(true);return}
     if(t.dataset.open!=null){const i=+t.dataset.open;top.open=top.open===i?null:i;const p=P.find(q=>q.id===top.p);if(top.open!=null&&p){top.hl=p.s[i];render(true);if(!st.full)focusStop(p.s[i])}else render(true);return}
   }
@@ -1334,7 +1394,9 @@ view.addEventListener('input',onSearch);
 view.addEventListener('compositionend',onSearch);
 $('#day').addEventListener('change',e=>{st.day=+e.target.value;render(true);drawBuses();refreshStopPopup()});
 
-applyStatic(); buildDays(); tickClock(); updHdr(); initMap(); applyStatic(); render(); showHint();
+applyStatic(); buildDays(); tickClock(); updHdr(); initMap(); applyStatic();
+if(!openFromHash(START_HASH)) render();
+showHint();
 if(window.ResizeObserver) new ResizeObserver(updHdr).observe($('.top'));
 $('#langback').addEventListener('click',()=>openLang(false));
 /* Browsers keep a cached copy of the page for up to 10 minutes. Ask the server for the

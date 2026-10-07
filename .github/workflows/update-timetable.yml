@@ -1,0 +1,55 @@
+# Twice a week, download the city's timetable (GTFS) and rebuild the site if it changed.
+# Nothing is committed when the timetable is the same, and a timetable that looks broken
+# (empty, or ending earlier than the current one) is never published: the run fails instead,
+# and GitHub emails you. You can also run it by hand: Actions -> Update timetable -> Run workflow.
+name: Update timetable
+
+on:
+  schedule:
+    - cron: '17 5 * * 1,4'   # Mondays and Thursdays, about 07:17 in Burgos
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-timetable
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Download the timetable
+        run: |
+          curl -fsSL --retry 3 --retry-delay 20 -A "Mozilla/5.0 (Burgos Bus site updater)" \
+            -o Google_transit.zip https://www.aytoburgos.es/GTFS/Google_transit.zip
+          unzip -tq Google_transit.zip
+
+      - name: Rebuild
+        run: |
+          cp index.html /tmp/old_index.html
+          python3 tools/build_site.py Google_transit.zip > /tmp/build.log
+          tail -n 1 /tmp/build.log
+
+      - name: Publish if the timetable changed
+        run: |
+          result=$(python3 tools/timetable_changed.py /tmp/old_index.html index.html) || { echo "$result"; exit 1; }
+          echo "$result"
+          if [ "$result" = "same" ]; then
+            git checkout -- index.html
+            echo "Timetable unchanged; nothing to publish."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "Timetable update: ${result#changed: }"
+          git push
