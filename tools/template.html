@@ -137,6 +137,9 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .tm{font:600 .95rem/1 var(--font-display);font-variant-numeric:tabular-nums;padding:5px 8px;border-radius:7px;background:var(--sunk);color:var(--ink)}
 .tm.next{background:var(--ink);color:var(--bg)}
 .tm em{font-style:normal;font-family:var(--font-body);font-weight:400;font-size:.7rem;color:inherit;opacity:.75;margin-left:4px}
+.tm.tmrw:not(.next){background:none;box-shadow:inset 0 0 0 1px var(--sunk)}
+.dayrule{padding:10px 14px 6px;font:600 .74rem var(--font-body);letter-spacing:.04em;text-transform:uppercase;color:var(--muted);border-top:1px solid var(--sunk)}
+.pop .pt small.tmrw{font:500 .7rem var(--font-body);color:var(--muted)}
 .tm.none{background:none;padding-left:0;color:var(--muted);font-family:var(--font-body);font-weight:400;font-size:.82rem}
 .bus{position:absolute;left:12px;z-index:3;transform:translateY(-50%);display:flex;align-items:center;justify-content:center;width:34px;height:24px;border-radius:7px;background:var(--rc);color:var(--rt);box-shadow:0 0 0 2px var(--surface),0 2px 6px rgba(0,0,0,.25);transition:top .8s ease}
 .bus svg{width:18px;height:18px}
@@ -587,13 +590,16 @@ function upcomingPlan(pats,c){
   return plan;
 }
 function waitingTrips(pats,c){ return upcomingPlan(pats,c).parked; }
-/* departures at stop s for patterns passing filter */
+/* departures at stop s for patterns passing filter. When looking at today, tomorrow's trips follow
+   on (off = +1 day, marked .tmrw) so a stop whose last bus has gone still shows the next ones. */
+const NEXT_DAY=86400;
 function departuresAt(s,c,filter,opts={}){
-  const out=[];
+  const out=[]; const tk=c.live&&opts.from!=null?addDays(c.key,1):null;
   for(const {p,k} of stopRefs[s]){
     if(filter&&!filter(p)) continue;
     if(!opts.terminus&&k===p.s.length-1) continue;
     for(const {t,off} of dayTrips(p,c)){const tm=t.start+t.prof[k]+off;if(tm>=(opts.from??-1e9))out.push({tm,p,k,t,off})}
+    if(tk) for(const t of tripsOn(p,tk)){const tm=t.start+t.prof[k]+NEXT_DAY;if(tm>=opts.from)out.push({tm,p,k,t,off:NEXT_DAY,tmrw:true})}
   }
   out.sort((a,b)=>a.tm-b.tm);
   return out;
@@ -737,9 +743,10 @@ function fallbackBanner(c){
 function lineRow(r,c){
   const pats=routeP[r]; const act=activeTrips(pats,c).length;
   let first=null; for(const p of pats){for(const {t,off} of dayTrips(p,c)){const tm=t.start+off;if(tm>=c.from&&(!first||tm<first.tm))first={tm,p}}}
+  if(!first&&c.live){const tk=addDays(c.key,1);for(const p of pats){for(const t of tripsOn(p,tk)){if(!first||t.start<first.tm-NEXT_DAY)first={tm:t.start+NEXT_DAY,p,tmrw:true}}}}
   let sub;
   if(act) sub=`<span class="live"><span class="livedot"></span>${T('running',{n:act})}</span>`;
-  else if(first) sub=T('next',{time:hhmm(first.tm),dest:esc(first.p.h)});
+  else if(first) sub=T('next',{time:hhmm(first.tm)+(first.tmrw?` (${T('tomorrow')})`:''),dest:esc(first.p.h)});
   else sub=T(c.live?'noMoreToday':'noServiceDay');
   const on=fav.lines.includes(r);
   const lit=active.has(r);
@@ -787,7 +794,7 @@ function lineView(v){
   const nTrips=tripsOn(p,c.key).length;
   if(c.live){
     if(act.length) h+=`<div class="status"><span class="live"><span class="livedot"></span>${T('onRoad',{n:act.length})}</span> · ${T('estNote')}</div>`;
-    else { const nx=departuresAt(p.s[0],c,q=>q.r===r&&q.d===v.d,{from:c.from})[0]; h+=`<div class="status">${T('noneRunning')}${nx?' '+T('nextLeaves',{stop:esc(S[p.s[0]].name),time:hhmm(nx.tm)}):''}</div>`; }
+    else { const nx=departuresAt(p.s[0],c,q=>q.r===r&&q.d===v.d,{from:c.from})[0]; h+=`<div class="status">${T('noneRunning')}${nx?' '+T('nextLeaves',{stop:esc(S[p.s[0]].name),time:hhmm(nx.tm)+(nx.tmrw?` (${T('tomorrow')})`:'')}):''}</div>`; }
   } else h+=`<div class="status">${T('tripsOnDay',{day:prettyKey(c.key),n:nTrips})}</div>`;
 
   /* place buses on this pattern */
@@ -811,7 +818,8 @@ function lineView(v){
       const diff=d.tm-c.nowSec, other=d.p.h!==p.h?`<em>→ ${esc(d.p.h)}</em>`:'';
       let txt=hhmm(d.tm);
       if(c.live&&n===0){ if(diff<60) txt=T('due'); else if(diff<=1200) txt=T('min',{n:Math.floor(diff/60)})+'<em>'+hhmm(d.tm)+'</em>'; }
-      return `<span class="tm ${n===0?'next':''}">${txt}${other}</span>`;
+      const tm1=d.tmrw&&!(n>0&&shown[n-1].tmrw)?`<em>${T('tomorrow')}</em>`:'';
+      return `<span class="tm ${n===0?'next':''} ${d.tmrw?'tmrw':''}">${txt}${tm1}${other}</span>`;
     }).join('');
     else times=`<span class="tm none">${T(c.live?'noMoreToday':'noBusesDay')}</span>`;
     const xf=stopRoutes[s].filter(q=>q!==r).map(q=>badge(q,'sm')).join('');
@@ -853,7 +861,9 @@ function stopView(v){
   h+=`<a class="linkbtn" href="https://maps.apple.com/?ll=${s.lat},${s.lon}&q=${encodeURIComponent(s.name)}" target="_blank" rel="noopener">${T('apple')}</a><a class="linkbtn" href="https://www.google.com/maps/search/?api=1&query=${s.lat},${s.lon}" target="_blank" rel="noopener">${T('google')}</a>`;
   h+=`<div class="eyebrow">${T('departures')}</div><div class="list">`;
   if(!deps.length) h+=`<div class="empty">${T(c.live?'noDepToday':'noDepDay')}</div>`;
+  let ruled=false;
   deps.forEach(d=>{
+    if(d.tmrw&&!ruled){ ruled=true; h+=`<div class="dayrule">${T('tomorrow')} · ${esc(prettyKey(addDays(c.key,1)))}</div>`; }
     const diff=d.tm-c.nowSec; const rl=c.live?rel(diff):null;
     const big=rl&&diff<=1200?rl:hhmm(d.tm);
     const small=big===hhmm(d.tm)?(rl||''):hhmm(d.tm);
@@ -995,9 +1005,9 @@ function drawRoutes(sel){
 function stopPopup(i){
   const c=ctx(); const deps=departuresAt(i,c,null,{from:c.from-30});
   const groups=new Map();
-  for(const d of deps){const k=d.p.r+'|'+d.p.h;if(!groups.has(k))groups.set(k,{r:d.p.r,h:d.p.h,pid:d.p.id,t:[]});const g=groups.get(k);if(g.t.length<3)g.t.push(d.tm)}
+  for(const d of deps){const k=d.p.r+'|'+d.p.h;if(!groups.has(k))groups.set(k,{r:d.p.r,h:d.p.h,pid:d.p.id,t:[]});const g=groups.get(k);if(g.t.length<3)g.t.push(d)}
   const served=stopRoutes[i].filter(r=>![...groups.values()].some(g=>g.r===r));
-  const rows=[...groups.values()].sort((a,b)=>a.t[0]-b.t[0]).map(g=>`<li><button class="pl" data-line="${g.r}" data-dirp="${g.pid}" data-hl="${i}">${badge(g.r,'sm')}<span class="ph">${esc(g.h)}</span></button><span class="pt">${g.t.map((tm,n)=>{const df=tm-c.nowSec;return n===0&&c.live&&df<60?T('due'):n===0&&c.live&&df<=1200?T('min',{n:Math.floor(df/60)}):hhmm(tm)}).join(' · ')}</span></li>`).join('');
+  const rows=[...groups.values()].sort((a,b)=>a.t[0].tm-b.t[0].tm).map(g=>`<li><button class="pl" data-line="${g.r}" data-dirp="${g.pid}" data-hl="${i}">${badge(g.r,'sm')}<span class="ph">${esc(g.h)}</span></button><span class="pt">${g.t.map((d,n)=>{const tm=d.tm,df=tm-c.nowSec;const tag=d.tmrw&&!(n>0&&g.t[n-1].tmrw)?`<small class="tmrw">${T('tomorrow')}</small> `:'';return tag+(n===0&&c.live&&df<60?T('due'):n===0&&c.live&&df<=1200?T('min',{n:Math.floor(df/60)}):hhmm(tm))}).join(' · ')}</span></li>`).join('');
   return `<div class="pop"><h4>${esc(S[i].name)}</h4><div class="code">${T('stopCode',{code:esc(S[i].code)})} · ${c.live?T('nextBuses'):prettyKey(c.key)}</div><ul>${rows||`<li>${T(c.live?'noMoreToday':'noBusesDay')}</li>`}</ul>${served.length?`<div class="code" style="margin-bottom:6px">${T('alsoStops')} ${served.map(r=>badge(r,'sm')).join(' ')}</div>`:''}<button data-stop="${i}">${T('fullTT')}</button></div>`;
 }
 /* Your location: the first tap finds you and opens the nearest stop; from then on the dot
