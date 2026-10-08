@@ -658,7 +658,7 @@ function upcomingPlan(pats,c){
 function waitingTrips(pats,c){ return upcomingPlan(pats,c).parked; }
 /* departures at stop s for patterns passing filter. When looking at today, tomorrow's trips follow
    on (off = +1 day, marked .tmrw) so a stop whose last bus has gone still shows the next ones. */
-const NEXT_DAY=86400;
+const NEXT_DAY=86400, NEXT_DAY_HOURS=4;
 function departuresAt(s,c,filter,opts={}){
   const out=[]; const tk=c.live&&opts.from!=null?addDays(c.key,1):null;
   for(const {p,k} of stopRefs[s]){
@@ -932,7 +932,12 @@ function stopsResults(){
 
 function stopView(v){
   const c=ctx(); const s=S[v.s]; const on=fav.stops.includes(v.s);
-  const deps=departuresAt(v.s,c,null,{from:c.from-30}).slice(0,c.live?40:1000), lastM=lastTimes(departuresAt(v.s,c,null,{from:-1e9}));
+  /* A rolling window: every departure left today, then tomorrow's first NEXT_DAY_HOURS of service, so
+     late at night the board already shows tomorrow morning. (It used to stop after 40 rows, which at
+     busy stops was only an hour or two.) */
+  let deps=departuresAt(v.s,c,null,{from:c.from-30});
+  const t0=deps.find(d=>d.tmrw); if(t0) deps=deps.filter(d=>!d.tmrw||d.tm<=t0.tm+NEXT_DAY_HOURS*3600);
+  const lastM=lastTimes(departuresAt(v.s,c,null,{from:-1e9}));
   let h=`<div class="dhead"><button class="back" data-back aria-label="${T('back')}">${BACK}</button><div class="main"><h2>${esc(s.name)}</h2><div class="sub">${T('stopCode',{code:esc(s.code)})} · ${c.live?T('nextDeps'):prettyKey(c.key)}</div></div><button class="ibtn share" data-share aria-label="${T('share')}">${SHARE}</button><button class="star ${on?'on':''}" data-fav-stop="${v.s}" aria-label="${T(on?'favRemove':'favAdd')}">★</button></div><div class="pad">${fallbackBanner(c)}`;
   h+=`<div class="xfer" style="gap:6px;margin:0 0 6px">${stopRoutes[v.s].map(r=>`<button data-line="${r}" data-hl="${v.s}">${badge(r)}</button>`).join('')}</div>`;
   h+=`<a class="linkbtn" href="https://maps.apple.com/?ll=${s.lat},${s.lon}&q=${encodeURIComponent(s.name)}" target="_blank" rel="noopener">${T('apple')}</a><a class="linkbtn" href="https://www.google.com/maps/search/?api=1&query=${s.lat},${s.lon}" target="_blank" rel="noopener">${T('google')}</a>`;
