@@ -29,11 +29,19 @@ jobs:
 
       - name: Download the timetable
         run: |
-          # time limits so an unresponsive server fails the run in minutes, not at the job timeout
-          curl -4 -fSL --connect-timeout 30 --max-time 180 --retry 2 --retry-delay 20 --retry-all-errors \
-            -A "Mozilla/5.0 (Burgos Bus site updater)" -w 'HTTP %{http_code}, %{size_download} bytes in %{time_total}s\n' \
-            -o Google_transit.zip https://www.aytoburgos.es/GTFS/Google_transit.zip
-          unzip -tq Google_transit.zip
+          # The city's server doesn't answer GitHub's machines, so fall back to MobilityData's public
+          # mirror of the same feed. A stale mirror is harmless: an older timetable is never published.
+          get() { curl -4 -fSL --connect-timeout 20 --max-time 180 --retry 1 --retry-delay 10 --retry-all-errors \
+                    -A "Mozilla/5.0 (Burgos Bus site updater)" -o Google_transit.zip "$1" && unzip -tq Google_transit.zip; }
+          if get https://www.aytoburgos.es/GTFS/Google_transit.zip; then
+            echo "::notice::Timetable downloaded from aytoburgos.es"
+          elif get "https://storage.googleapis.com/storage/v1/b/mdb-latest/o/es-castile-and-leon-autobuses-urbanos-de-burgos-gtfs-3145.zip?alt=media"; then
+            echo "::notice::aytoburgos.es unreachable; timetable downloaded from the MobilityData mirror"
+          else
+            echo "::error::Could not download the timetable from aytoburgos.es or the MobilityData mirror"; exit 1
+          fi
+          range=$(python3 -c "import csv,io,zipfile;z=zipfile.ZipFile('Google_transit.zip');d=sorted({r['date'] for r in csv.DictReader(io.TextIOWrapper(z.open('calendar_dates.txt'),'utf-8-sig'))});print(d[0],'-',d[-1]) if d else print('no calendar_dates')")
+          echo "::notice::Downloaded timetable covers $range"
 
       - name: Rebuild
         run: |
@@ -43,8 +51,8 @@ jobs:
 
       - name: Publish if the timetable changed
         run: |
-          result=$(python3 tools/timetable_changed.py /tmp/old_index.html index.html) || { echo "$result"; exit 1; }
-          echo "$result"
+          result=$(python3 tools/timetable_changed.py /tmp/old_index.html index.html) || { echo "::error::$result"; exit 1; }
+          echo "::notice::$result"
           if [ "$result" = "same" ]; then
             git checkout -- index.html
             echo "Timetable unchanged; nothing to publish."
