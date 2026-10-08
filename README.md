@@ -18,13 +18,15 @@ Bus positions are estimated from the timetable. Burgos does not currently publis
 
 ## Updating the timetable
 
-The city publishes timetables as a GTFS file that covers a few months at a time. A GitHub Action (`.github/workflows/update-timetable.yml`) downloads it every Monday and Thursday, rebuilds the site and publishes it only if the timetable actually changed. A file that looks broken (empty, or ending earlier than the current one) is never published; the run fails instead and GitHub emails you. You can also start it from the Actions tab.
+The city publishes timetables as a GTFS file that covers a few months at a time. Its server only answers from Spain, so GitHub can't fetch it by itself. To update:
 
-To do it by hand:
+1. On your phone or iPad, download https://www.aytoburgos.es/GTFS/Google_transit.zip
+2. On github.com, open the `gtfs` folder of this repository, tap **Add file → Upload files**, pick the zip and commit.
+3. A GitHub Action (`.github/workflows/update-timetable.yml`) rebuilds the site from it and publishes it within a minute or two, but only if the timetable actually changed. A file that looks broken (empty, or ending earlier than the current one) is never published; the run fails and GitHub emails you.
 
-1. Download https://www.aytoburgos.es/GTFS/Google_transit.zip
-2. Run `python3 tools/build_site.py Google_transit.zip`
-3. Commit the new `index.html`.
+The same Action also tries to download the file every Monday, in case the city's server ever opens up.
+
+To rebuild by hand instead: `python3 tools/build_site.py Google_transit.zip`, then commit `index.html`.
 
 After changing only `tools/template.html` or `tools/i18n.js`, run `python3 tools/build_site.py --keep-data` to rebuild with the timetable already in `index.html`.
 

@@ -1,12 +1,21 @@
-# Twice a week, download the city's timetable (GTFS) and rebuild the site if it changed.
-# Nothing is committed when the timetable is the same, and a timetable that looks broken
-# (empty, or ending earlier than the current one) is never published: the run fails instead,
-# and GitHub emails you. You can also run it by hand: Actions -> Update timetable -> Run workflow.
+# Rebuilds the site from the city's timetable (GTFS) and publishes it if the timetable changed.
+#
+# Two ways in:
+#  1. Upload a new Google_transit.zip into the gtfs/ folder on github.com (Add file -> Upload files).
+#     This works from an iPad. The site is rebuilt from that file within a minute or two.
+#  2. Every Monday it also tries to download the file itself. The city's server doesn't answer
+#     machines outside Spain (GitHub's included), so this usually can't reach it; it then just
+#     stops quietly rather than failing and emailing you.
+# A timetable that looks broken (empty, or ending earlier than the current one) is never published:
+# the run fails instead and GitHub emails you.
 name: Update timetable
 
 on:
+  push:
+    branches: [main]
+    paths: ['gtfs/Google_transit.zip']
   schedule:
-    - cron: '17 5 * * 1,4'   # Mondays and Thursdays, about 07:17 in Burgos
+    - cron: '17 5 * * 1'   # Mondays, about 07:17 in Burgos
   workflow_dispatch:
 
 permissions:
@@ -27,35 +36,44 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Download the timetable
+      - name: Get the timetable
+        id: get
         run: |
-          # The city's server doesn't answer GitHub's machines, so fall back to MobilityData's public
-          # mirror of the same feed. A stale mirror is harmless: an older timetable is never published.
-          get() { curl -4 -fSL --connect-timeout 20 --max-time 180 --retry 1 --retry-delay 10 --retry-all-errors \
-                    -A "Mozilla/5.0 (Burgos Bus site updater)" -o Google_transit.zip "$1" && unzip -tq Google_transit.zip; }
-          if get https://www.aytoburgos.es/GTFS/Google_transit.zip; then
-            echo "::notice::Timetable downloaded from aytoburgos.es"
-          elif get "https://storage.googleapis.com/storage/v1/b/mdb-latest/o/es-castile-and-leon-autobuses-urbanos-de-burgos-gtfs-3145.zip?alt=media"; then
-            echo "::notice::aytoburgos.es unreachable; timetable downloaded from the MobilityData mirror"
+          if [ "${{ github.event_name }}" = "push" ]; then
+            cp gtfs/Google_transit.zip Google_transit.zip
+            unzip -tq Google_transit.zip || { echo "::error::gtfs/Google_transit.zip is not a valid zip file"; exit 1; }
+            echo "::notice::Using the uploaded gtfs/Google_transit.zip"
           else
-            echo "::error::Could not download the timetable from aytoburgos.es or the MobilityData mirror"; exit 1
+            get() { curl -4 -fSL --connect-timeout 20 --max-time 180 --retry 1 --retry-delay 10 --retry-all-errors \
+                      -A "Mozilla/5.0 (Burgos Bus site updater)" -o Google_transit.zip "$1" && unzip -tq Google_transit.zip; }
+            if get https://www.aytoburgos.es/GTFS/Google_transit.zip; then
+              echo "::notice::Timetable downloaded from aytoburgos.es"
+            elif get "https://storage.googleapis.com/storage/v1/b/mdb-latest/o/es-castile-and-leon-autobuses-urbanos-de-burgos-gtfs-3145.zip?alt=media"; then
+              echo "::notice::Timetable downloaded from the MobilityData mirror"
+            else
+              echo "::notice::The timetable couldn't be downloaded from here (the city's server only answers from Spain). Upload it to gtfs/ instead."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
           fi
           range=$(python3 -c "import csv,io,zipfile;z=zipfile.ZipFile('Google_transit.zip');d=sorted({r['date'] for r in csv.DictReader(io.TextIOWrapper(z.open('calendar_dates.txt'),'utf-8-sig'))});print(d[0],'-',d[-1]) if d else print('no calendar_dates')")
-          echo "::notice::Downloaded timetable covers $range"
+          echo "::notice::This timetable covers $range"
 
       - name: Rebuild
+        if: steps.get.outputs.skip != 'true'
         run: |
           cp index.html /tmp/old_index.html
           python3 tools/build_site.py Google_transit.zip > /tmp/build.log
           tail -n 1 /tmp/build.log
 
       - name: Publish if the timetable changed
+        if: steps.get.outputs.skip != 'true'
         run: |
           result=$(python3 tools/timetable_changed.py /tmp/old_index.html index.html) || { echo "::error::$result"; exit 1; }
           echo "::notice::$result"
           if [ "$result" = "same" ]; then
             git checkout -- index.html
-            echo "Timetable unchanged; nothing to publish."
+            echo "::notice::Timetable unchanged; nothing to publish."
             exit 0
           fi
           git config user.name "github-actions[bot]"
