@@ -30,8 +30,17 @@ def enc_poly(pts, prec=1e5):
     return ''.join(out)
 
 routes = rd('routes.txt')
+# Lines that exist only as internal codes in the feed, shown under the public line they belong to.
+# 73: the 5:30 and 6:30 trips Gamonal -> Pol. Ind. Villalonquejar, printed as special trips of line 19.
+MERGE = {'73': '19'}
+_short = {r['route_id']: r['route_short_name'] for r in routes}
+_target = {s: next((r['route_id'] for r in routes if r['route_short_name'] == t), None) for s, t in MERGE.items()}
+_remap = {rid: _target[sn] for rid, sn in _short.items() if _target.get(sn)}
+routes = [r for r in routes if r['route_id'] not in _remap]
 stops = rd('stops.txt')
 trips = rd('trips.txt')
+for t in trips:
+    t['route_id'] = _remap.get(t['route_id'], t['route_id'])
 st = rd('stop_times.txt')
 cal = rd('calendar.txt', optional=True)
 cd = rd('calendar_dates.txt', optional=True)

@@ -562,11 +562,18 @@ function openFromHash(hash){
   return false;
 }
 let fav = {lines:[],stops:[]};
-try{const v=JSON.parse(localStorage.getItem('burgosbus-fav')||'null');if(v&&Array.isArray(v.lines)&&Array.isArray(v.stops))fav=v}catch(e){}
-function saveFav(){try{localStorage.setItem('burgosbus-fav',JSON.stringify(fav))}catch(e){}}
+/* Saved by line number and stop code, so they stay right when a timetable update adds, removes or
+   reorders lines or stops. Older saves used list positions; LEGACY_LINES is the line order they used. */
+const LEGACY_LINES=['01','02','03','04','05','06','07','08','09','10','11','12','13','14','15','16','17','18','19','20','21','22','23','73','87','88','89','C1','C2'];
+const lineByCode=c=>R.findIndex(x=>x.n===c), stopByCode=c=>S.findIndex(x=>x.code===c);
+const loadLine=v=>{ const i=typeof v==='number'?lineByCode(LEGACY_LINES[v]==='73'?'19':LEGACY_LINES[v]):lineByCode(v); return i>=0?i:null; };
+const loadStop=v=>{ const i=typeof v==='number'?(S[v]?v:-1):stopByCode(v); return i>=0?i:null; };
+const uniq=a=>[...new Set(a.filter(x=>x!=null))];
+try{const v=JSON.parse(localStorage.getItem('burgosbus-fav')||'null');if(v&&Array.isArray(v.lines)&&Array.isArray(v.stops))fav={lines:uniq(v.lines.map(loadLine)),stops:uniq(v.stops.map(loadStop))}}catch(e){}
+function saveFav(){try{localStorage.setItem('burgosbus-fav',JSON.stringify({lines:fav.lines.map(i=>R[i].n),stops:fav.stops.map(i=>S[i].code)}))}catch(e){}}
 /* new visitors start with no lines switched on: the whole network shows in grey until they pick */
 let active=new Set(), firstVisit=true;
-try{const v=JSON.parse(localStorage.getItem('burgosbus-active')||'null');if(Array.isArray(v)){active=new Set(v.filter(i=>R[i]));firstVisit=false}}catch(e){}
+try{const v=JSON.parse(localStorage.getItem('burgosbus-active')||'null');if(Array.isArray(v)){active=new Set(uniq(v.map(loadLine)));firstVisit=false}}catch(e){}
 try{if(localStorage.getItem('burgosbus-hinted'))firstVisit=false}catch(e){}
 /* Lines drawn on the map: the ones switched on, plus (only while a stop's timetable is open)
    every line serving that stop. Those extra lines are never written to `active`, so leaving the
@@ -576,7 +583,9 @@ function shownLines(){
   if(st.panel&&top&&top.kind==='stop') stopRoutes[top.s].forEach(r=>s.add(r));
   return s;
 }
-function saveActive(){try{localStorage.setItem('burgosbus-active',JSON.stringify([...active]))}catch(e){}}
+function saveActive(){try{localStorage.setItem('burgosbus-active',JSON.stringify([...active].map(i=>R[i].n)))}catch(e){}}
+/* rewrite older saves in the new format right away */
+try{ if(/^\{"lines":\[\d/.test(localStorage.getItem('burgosbus-fav')||'')) saveFav(); if(/^\[\d/.test(localStorage.getItem('burgosbus-active')||'')) saveActive(); }catch(e){}
 function toggleActive(r){if(active.has(r))active.delete(r);else active.add(r);saveActive();render(true)}
 /* Starring adds or removes a Favourites block above the list. Keep the row you tapped
    exactly where it was on screen so the list never jumps under your finger. */
