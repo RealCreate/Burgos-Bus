@@ -973,7 +973,8 @@ function fitPad(){
 function initMap(){
   if(typeof L==='undefined'){ $('#map').innerHTML=`<div class="empty">${T('mapFail')}</div>`; return; }
   const coarse=matchMedia('(pointer:coarse)').matches;
-  map=L.map('map',{zoomControl:false,attributionControl:STANDALONE,preferCanvas:true,renderer:L.canvas({tolerance:coarse?14:9}),zoomSnap:.5});
+  map=L.map('map',{zoomControl:false,attributionControl:STANDALONE,preferCanvas:true,renderer:L.canvas({tolerance:coarse?14:9}),zoomSnap:.5,doubleClickZoom:false});
+  setupDoubleTap();
   L.control.zoom({position:'topright'}).addTo(map);
   const b=L.latLngBounds(S.filter((_,i)=>stopRefs[i].length).map(s=>[s.lat,s.lon]));
   map.fitBounds(b.pad(-.12));
@@ -1015,6 +1016,35 @@ function initMap(){
   map.on('popupopen',e=>{if(e.popup._stop!=null){popupStop=e.popup._stop;markSel()}});
   map.on('popupclose',e=>{if(e.popup._stop!=null&&e.popup._stop===popupStop){popupStop=null;markSel()}});
   map.on('click',()=>{ if(st.panel&&!wide()&&st.full){st.full=false;render(true)} });
+}
+/* Double tap (or double click) zooms in one level, keeping the tapped point under your finger, as in
+   Apple and Google Maps. Leaflet's own version listens for dblclick, which iPhone Safari doesn't send
+   on the map, so taps are detected here. Taps on buttons, pop-ups and the zoom controls don't count. */
+function setupDoubleTap(){
+  const el=map.getContainer(); let last=null, lastZoomAt=0;
+  const zoomAt=(x,y)=>{
+    const r=el.getBoundingClientRect(), pt=L.point(x-r.left,y-r.top);
+    if(follow) setFollow(false);
+    map.setZoomAround(pt,Math.min(map.getMaxZoom(),Math.round(map.getZoom())+1),{animate:!reduceMotion});
+    lastZoomAt=performance.now();
+  };
+  const onUi=t=>t.closest('.leaflet-control,.leaflet-popup,.vehwrap,.selchip,.fab,.hint');
+  let down=null;
+  el.addEventListener('pointerdown',e=>{ if(e.pointerType==='mouse'||!e.isPrimary) { down=null; return; } down={x:e.clientX,y:e.clientY,t:e.timeStamp}; },{passive:true});
+  el.addEventListener('pointerup',e=>{
+    if(e.pointerType==='mouse'||!down||onUi(e.target)) { down=null; return; }
+    const moved=Math.hypot(e.clientX-down.x,e.clientY-down.y), held=e.timeStamp-down.t; down=null;
+    if(moved>12||held>350){ last=null; return; }                 /* a drag or a long press, not a tap */
+    if(last&&e.timeStamp-last.t<320&&Math.hypot(e.clientX-last.x,e.clientY-last.y)<40){
+      last=null; zoomAt(e.clientX,e.clientY);
+      map.closePopup();                                            /* the first tap may have opened a stop */
+    } else last={x:e.clientX,y:e.clientY,t:e.timeStamp};
+  },{passive:true});
+  el.addEventListener('pointercancel',()=>{ down=null; last=null; },{passive:true});
+  el.addEventListener('dblclick',e=>{
+    if(onUi(e.target)||performance.now()-lastZoomAt<600) return;   /* already zoomed by the touch handler */
+    e.preventDefault(); zoomAt(e.clientX,e.clientY);
+  });
 }
 function syncMap(){
   if(!map) return;
