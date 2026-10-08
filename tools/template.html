@@ -998,16 +998,11 @@ function initMap(){
       return new L.Bounds(px.subtract(half),px.add(half));
     };
     tiles=mkTiles();
-    /* keep the old tiles underneath until the new set has loaded, so the map never flashes blank */
-    themeChanged=()=>new Promise(res=>{
-      const old=tiles, nl=mkTiles(); tiles=nl; let done=false;
-      const drop=()=>{ if(old&&map.hasLayer(old)&&tiles!==old) map.removeLayer(old); };
-      const fin=()=>{ if(done) return; done=true; drop(); res(); };
-      nl.once('load',fin); setTimeout(()=>{ if(!done){done=true;res();} },450); setTimeout(drop,4000);
-      /* repaint the routes and stops in the new colours where they are; going through syncMap would
-         treat this as a newly opened line and re-fit the map, losing the user's zoom and position */
-      if(drawnKey!=null) drawRoutes(selection()); markedStop=undefined; markSel();
-    });
+    /* Both themes use the same tiles (dark is a CSS filter), so a theme change only repaints the routes
+       and stops in the new colours, at once. It used to load a second tile layer first, which froze the
+       circular reveal on the old screen for about half a second. Going through syncMap would treat this
+       as a newly opened line and re-fit the map, losing the user's zoom and position. */
+    themeChanged=()=>{ if(drawnKey!=null) drawRoutes(selection()); markedStop=undefined; markSel(); return Promise.resolve(); };
     const mq=matchMedia('(prefers-color-scheme: dark)');
     const onSys=()=>{ if(themeMode==='auto') themeChanged(); };
     if(mq.addEventListener) mq.addEventListener('change',onSys); else if(mq.addListener) mq.addListener(onSys);
