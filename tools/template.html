@@ -962,8 +962,10 @@ function stopView(v){
 let map=null, baseLayer=null, busLayer=null, stopLayer=null, ringLayer=null, drawnKey=null;
 function selection(){
   const top=st.stack[st.stack.length-1];
-  if(top&&top.kind==='line') return {r:top.r,pid:top.p,stop:top.hl};
-  if(top&&top.kind==='stop') return {r:-1,pid:null,stop:top.s};
+  /* the stop ring only shows while its timetable is open; closing the panel deselects it, as in Apple
+     Maps. A line stays highlighted with its chip at the bottom of the map as the way back. */
+  if(top&&top.kind==='line') return {r:top.r,pid:top.p,stop:st.panel?top.hl:null};
+  if(top&&top.kind==='stop'&&st.panel) return {r:-1,pid:null,stop:top.s};
   return {r:-1,pid:null,stop:null};
 }
 function fitPad(){
