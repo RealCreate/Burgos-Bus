@@ -398,9 +398,6 @@ body{font:16px/1.4 var(--font-body);-webkit-font-smoothing:antialiased;letter-sp
   opacity:0;transform:translate(-50%,-6px) scale(.92);transform-origin:50% 0;transition:opacity 180ms ease,transform 260ms var(--ease-out)}
 .themetip.show{opacity:1;transform:translate(-50%,0) scale(1);transition:opacity 160ms ease,transform 420ms cubic-bezier(.34,1.4,.64,1)}
 @media (prefers-reduced-transparency:reduce){.themetip{background:var(--glass-solid);-webkit-backdrop-filter:none;backdrop-filter:none}}
-/* page cross-over: the new theme spreads out from the button (View Transitions) */
-::view-transition-old(root),::view-transition-new(root){animation:none;mix-blend-mode:normal}
-::view-transition-new(root){z-index:9999}
 @media (max-width:420px){.top{gap:8px}.brand svg{display:none}}
 /* Map tiles: CARTO Voyager in both themes, for coloured parks, water and roads. Light: a little more
    contrast and colour. Dark: the same tiles flipped (invert + 180 degree hue turn keeps green parks green
@@ -1322,14 +1319,8 @@ function setTheme(m){
     paintThemeBtn(); return before!==after?themeChanged():Promise.resolve(); };
   const tip=$('#themetip'); tip.textContent=themeName(m); tip.classList.remove('show'); void tip.offsetWidth; tip.classList.add('show');
   clearTimeout(tipTimer); tipTimer=setTimeout(()=>tip.classList.remove('show'),1400);
-  if(before===after||reduceMotion||!document.startViewTransition){ apply(); return; }
-  const r=$('#themebtn').getBoundingClientRect(), x=r.left+r.width/2, y=r.top+r.height/2;
-  const end=Math.hypot(Math.max(x,innerWidth-x),Math.max(y,innerHeight-y));
-  try{
-    const vt=document.startViewTransition(apply);
-    vt.ready.then(()=>root.animate({clipPath:[`circle(0px at ${x}px ${y}px)`,`circle(${end}px at ${x}px ${y}px)`]},
-      {duration:620,easing:'cubic-bezier(.32,.72,0,1)',pseudoElement:'::view-transition-new(root)'})).catch(()=>{});
-  }catch(e){ apply(); }
+  /* switch at once: the circular reveal (View Transitions) stalled and jumped in iPhone Safari over the map */
+  apply();
 }
 
 /* ---------- language ---------- */
