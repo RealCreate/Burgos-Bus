@@ -405,7 +405,7 @@ body{font:16px/1.4 var(--font-body);-webkit-font-smoothing:antialiased;letter-sp
 /* Map tiles: CARTO Voyager in both themes, for coloured parks, water and roads. Light: a little more
    contrast and colour. Dark: the same tiles flipped (invert + 180 degree hue turn keeps green parks green
    and blue water blue), then dimmed, since CARTO's own dark style is near-black with barely visible streets. */
-.leaflet-tile-pane{filter:contrast(1.12) saturate(1.35)}
+.leaflet-tile-pane{filter:brightness(.96) contrast(1.28) saturate(1.6)}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.92) contrast(.92) saturate(1.5)}}
 :root[data-theme="dark"] .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.92) contrast(.92) saturate(1.5)}
 /* last bus of the day, nearest stop to you, share button and its confirmation */
