@@ -402,6 +402,11 @@ body{font:16px/1.4 var(--font-body);-webkit-font-smoothing:antialiased;letter-sp
 ::view-transition-old(root),::view-transition-new(root){animation:none;mix-blend-mode:normal}
 ::view-transition-new(root){z-index:9999}
 @media (max-width:420px){.top{gap:8px}.brand svg{display:none}}
+/* Map tiles: Voyager (light) already has coloured parks, water and roads; nudge it a little crisper.
+   Dark Matter has no colourful twin, so lift its streets and labels out of the black. */
+.leaflet-tile-pane{filter:contrast(1.06) saturate(1.12)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .leaflet-tile-pane{filter:brightness(1.35) contrast(1.25) saturate(1.2)}}
+:root[data-theme="dark"] .leaflet-tile-pane{filter:brightness(1.35) contrast(1.25) saturate(1.2)}
 /* last bus of the day, nearest stop to you, share button and its confirmation */
 .lastbus{display:inline-block;font:600 .68rem/1.4 var(--font-body);letter-spacing:0;padding:0 6px;border-radius:999px;vertical-align:1px;
   background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)}
@@ -981,7 +986,7 @@ function initMap(){
   if(STANDALONE){
     const isDark=()=>document.documentElement.dataset.theme==='dark'||(document.documentElement.dataset.theme!=='light'&&matchMedia('(prefers-color-scheme: dark)').matches);
     let tiles=null;
-    const mkTiles=()=>L.tileLayer(`https://basemaps.cartocdn.com/rastertiles/${isDark()?'dark_all':'light_all'}/{z}/{x}/{y}{r}.png?key=${CARTO_KEY}`,{maxZoom:19,updateWhenIdle:false,updateInterval:100,keepBuffer:6,attribution:'© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>'}).addTo(map);
+    const mkTiles=()=>L.tileLayer(`https://basemaps.cartocdn.com/rastertiles/${isDark()?'dark_all':'voyager'}/{z}/{x}/{y}{r}.png?key=${CARTO_KEY}`,{maxZoom:19,updateWhenIdle:false,updateInterval:100,keepBuffer:6,attribution:'© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>'}).addTo(map);
     /* Fetch one extra ring of tiles beyond the screen edge, so dragging reveals map that is already
        loaded instead of blank squares (Leaflet otherwise loads only what is visible). */
     const tsz=256;
