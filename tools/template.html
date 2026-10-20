@@ -76,6 +76,11 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .search{width:100%;padding:11px 14px;border-radius:12px;border:1px solid var(--rule);background:var(--surface);color:var(--ink);font:inherit}
 .eyebrow{font:700 .72rem var(--font-body);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:18px 2px 8px}
 .note{font-size:.8rem;color:var(--muted);margin:22px 2px 0;line-height:1.5}
+.banner.dv b{display:block;margin-bottom:4px}.banner.dv>div{margin-top:3px}.banner.dv .badge{vertical-align:middle}
+.dvnote{color:var(--muted);font-size:.78rem;margin-top:6px!important}
+.dvtag{display:inline-block;font-size:.74rem;font-weight:700;color:var(--warn);margin-right:6px}
+.dvpop{font-size:.8rem;line-height:1.35;margin:4px 0 8px;padding:8px 10px;border-radius:10px;background:color-mix(in srgb,var(--warn) 12%,transparent)}
+.stop.closed .nm b{text-decoration:line-through;color:var(--muted)}.stop.closed .dot{opacity:.35}
 .banner{background:color-mix(in srgb,var(--warn) 12%,var(--surface));border:1px solid color-mix(in srgb,var(--warn) 35%,var(--rule));color:var(--ink);border-radius:12px;padding:10px 12px;font-size:.84rem;margin-bottom:12px}
 .empty{padding:28px 8px;text-align:center;color:var(--muted)}
 
@@ -816,6 +821,45 @@ function fallbackBanner(c){
   return `<div class="banner">${T('banner',{from:longKey(dataKeys[0]),to:longKey(dataKeys[dataKeys.length-1]),day:prettyKey(c.key),wday:wdayLong(r.key),date:longKey(r.key)})}</div>`;
 }
 
+/* ---------- temporary service changes the council's timetable file doesn't include yet ----------
+   Each notice shows itself from `from` to `to` (inclusive) and then disappears on its own; delete it
+   once the new timetable file covers the change. Closed stops are listed by stop code (both sides of
+   the street have their own code). alt: [name, isNewStop]. */
+const NOTICES=[{
+  from:'20261015', to:'20261231', title:'dvWorks',   /* Alfonso VIII works; council expects them to finish by the end of 2026 */
+  lines:{
+    '05':{closed:['PA00156','PA00310','PA00029','PA00308','PA00185','PA00267'],
+          alt:[['Reina Leonor – Hospital Militar',1],['Hospital Militar – P.º de los Comendadores'],['Pte. Malatos']]},
+    '07':{closed:['PA00029','PA00308','PA00156','PA00310','PA00128','PA00309'],
+          alt:[['Reina Leonor',1],['Pte. Malatos']]},
+    'C1':{closed:['PA00603','PA00495','PA00185','PA00029','PA00156','PA00496'],
+          alt:[['Caleruega 5'],['Caleruega 20B'],['Navas de Tolosa – Claustrillas',1]]},
+    'C2':{closed:['PA00500','PA00310','PA00308','PA00267','PA00501'],
+          alt:[['Navas de Tolosa – Claustrillas',1]]},
+    '22':{closed:['PA00500','PA00310','PA00308','PA00267','PA00501','PA00580','PA00603','PA00495','PA00185','PA00029','PA00156','PA00496'],
+          alt:[['Caleruega 5'],['Caleruega 20B'],['Navas de Tolosa – Claustrillas',1]]}
+  }}];
+const codeIdx=new Map(S.map(x=>[x.code,x.i]));
+function noticeFor(r,key){
+  for(const n of NOTICES){ if(key<n.from||key>n.to) continue; const l=n.lines[R[r].n];
+    if(l) return {n,l,closed:new Set(l.closed.map(c=>codeIdx.get(c)).filter(i=>i!=null))}; }
+  return null;
+}
+const stopClosed=(st_,r,key)=>{const x=noticeFor(r,key);return !!x&&x.closed.has(st_)};
+const altList=alts=>alts.map(a=>esc(a[0])+(a[1]?` <small>(${T('dvNew')})</small>`:'')).join(', ');
+function diversionBanner(r,c,pat){
+  const x=noticeFor(r,c.key); if(!x) return '';
+  const names=[...new Set(pat.s.filter(q=>x.closed.has(q)).map(q=>S[q].name))];
+  if(!names.length) return '';   /* this direction isn't affected */
+  return `<div class="banner dv"><b>⚠ ${T('dvTitle')} · ${T(x.n.title)}</b><div>${T('dvClosed')} ${names.map(esc).join(', ')}</div><div>${T('dvUse')} ${altList(x.l.alt)}</div><div class="dvnote">${T('dvSince',{date:longKey(x.n.from)})}</div></div>`;
+}
+function stopNotice(i,c,compact){
+  const rs=stopRoutes[i].filter(r=>stopClosed(i,r,c.key)); if(!rs.length) return '';
+  const x=noticeFor(rs[0],c.key), alts=[]; rs.forEach(r=>noticeFor(r,c.key).l.alt.forEach(a=>{if(!alts.some(b=>b[0]===a[0]))alts.push(a)}));
+  if(compact) return `<div class="dvpop">⚠ ${T('dvStopOff')} ${rs.map(r=>badge(r,'sm')).join(' ')}<br>${T('dvUse')} ${altList(alts)}</div>`;
+  return `<div class="banner dv"><b>⚠ ${T('dvStopOff')} ${rs.map(r=>badge(r,'sm')).join(' ')}</b><div>${T(x.n.title)}</div><div>${T('dvUse')} ${altList(alts)}</div><div class="dvnote">${T('dvSince',{date:longKey(x.n.from)})}</div></div>`;
+}
+
 function lineRow(r,c){
   const pats=routeP[r]; const act=activeTrips(pats,c).length;
   let first=null; for(const p of pats){for(const {t,off} of dayTrips(p,c)){const tm=t.start+off;if(tm>=c.from&&(!first||tm<first.tm))first={tm,p}}}
@@ -824,6 +868,7 @@ function lineRow(r,c){
   if(act) sub=`<span class="live"><span class="livedot"></span>${T('running',{n:act})}</span>`;
   else if(first) sub=T('next',{time:hhmm(first.tm)+(first.tmrw?` (${T('tomorrow')})`:''),dest:esc(first.p.h)});
   else sub=T(c.live?'noMoreToday':'noServiceDay');
+  if(noticeFor(r,c.key)) sub=`<span class="dvtag">⚠ ${T('dvTitle')}</span>`+sub;
   const on=fav.lines.includes(r);
   const lit=active.has(r);
   return `<div class="row"><button class="tog" data-toggle="${r}" aria-pressed="${lit}" aria-label="${T(lit?'hideLine':'showLine',{n:esc(R[r].n)})}">${badge(r,lit?'':'off')}</button><button class="row" style="padding:0;border:0;flex:1;min-width:0" data-line="${r}"><div class="main"><div class="t1">${esc(R[r].name)}</div><div class="t2">${sub}</div></div></button><button class="star ${on?'on':''}" data-fav-line="${r}" aria-label="${T(on?'favRemove':'favAdd')}">★</button></div>`;
@@ -862,7 +907,7 @@ function lineView(v){
   let nearI=-1;
   if(meLL){ let bd=1200; p.s.forEach((s,i)=>{ const dd=distM(S[s].lat,S[s].lon,meLL[0],meLL[1]); if(dd<bd){bd=dd;nearI=i} }); }
   const on=fav.lines.includes(r);
-  let h=`<div class="dhead" style="--rc:${x.col}"><button class="back" data-back aria-label="${T('back')}">${BACK}</button>${badge(r,'lg')}<div class="main"><h2>${esc(x.name)}</h2><div class="sub">${c.live?T('today'):prettyKey(c.key)}</div></div><button class="ibtn share" data-share aria-label="${T('share')}">${SHARE}</button><button class="star ${on?'on':''}" data-fav-line="${r}" aria-label="${T(on?'favRemove':'favAdd')}">★</button></div><div class="pad">${fallbackBanner(c)}`;
+  let h=`<div class="dhead" style="--rc:${x.col}"><button class="back" data-back aria-label="${T('back')}">${BACK}</button>${badge(r,'lg')}<div class="main"><h2>${esc(x.name)}</h2><div class="sub">${c.live?T('today'):prettyKey(c.key)}</div></div><button class="ibtn share" data-share aria-label="${T('share')}">${SHARE}</button><button class="star ${on?'on':''}" data-fav-line="${r}" aria-label="${T(on?'favRemove':'favAdd')}">★</button></div><div class="pad">${fallbackBanner(c)}${diversionBanner(r,c,p)}`;
   if(dirs.length>1){
     h+=`<div class="seg" role="group" aria-label="${T('direction')}">${dirs.map(d=>{const mp=mainPattern(pats.filter(q=>q.d===d),c);return `<button data-dir="${d}" aria-pressed="${d===v.d}">${T('to',{dest:esc(mp.h)})}<span>${T('from',{stop:esc(S[mp.s[0]].name)})}</span></button>`}).join('')}</div>`;
   }
@@ -902,6 +947,8 @@ function lineView(v){
       return `<span class="tm ${n===0?'next':''} ${d.tmrw?'tmrw':''}">${txt}${tm1}${other}${lb}</span>`;
     }).join('');
     else times=`<span class="tm none">${T(c.live?'noMoreToday':'noBusesDay')}</span>`;
+    const off=stopClosed(s,r,c.key);
+    if(off) times=`<span class="tm none">${T('dvOff')}</span>`;
     const xf=stopRoutes[s].filter(q=>q!==r).map(q=>badge(q,'sm')).join('');
     const open=v.open===i;
     let full='';
@@ -912,7 +959,7 @@ function lineView(v){
     }
     let buses='';
     (busAt[i]||[]).forEach(a=>{buses+=`<span class="bus${a.wait?' parked':''}" style="top:calc(21px + ${(a.f*100).toFixed(1)}%)" title="${T('between',{a:esc(S[p.s[i]].name),b:esc(S[p.s[i+1]]?.name||'')})}">${BUS_SVG}</span>`});
-    h+=`<div class="stop ${i===0?'first':''} ${last?'last':''} ${v.hl===s?'hl':''} ${i===nearI?'near':''}" id="st-${i}"><span class="dot"></span>${buses}<button class="nm" data-open="${i}" aria-expanded="${open}"><b>${esc(S[s].name)}</b><span class="code">${esc(S[s].code)}</span>${i===nearI?`<span class="nearyou">${T('nearYou')}</span>`:''}</button>${xf?`<div class="xfer">${xf}</div>`:''}<div class="times">${times}</div>${full}</div>`;
+    h+=`<div class="stop ${off?'closed':''} ${i===0?'first':''} ${last?'last':''} ${v.hl===s?'hl':''} ${i===nearI?'near':''}" id="st-${i}"><span class="dot"></span>${buses}<button class="nm" data-open="${i}" aria-expanded="${open}"><b>${esc(S[s].name)}</b><span class="code">${esc(S[s].code)}</span>${i===nearI?`<span class="nearyou">${T('nearYou')}</span>`:''}</button>${xf?`<div class="xfer">${xf}</div>`:''}<div class="times">${times}</div>${full}</div>`;
   });
   h+=`</div><p class="note">${T('tapStop')}</p></div>`;
   return h;
@@ -938,10 +985,10 @@ function stopView(v){
   /* A rolling window: every departure left today, then tomorrow's first NEXT_DAY_HOURS of service, so
      late at night the board already shows tomorrow morning. (It used to stop after 40 rows, which at
      busy stops was only an hour or two.) */
-  let deps=departuresAt(v.s,c,null,{from:c.from-30});
+  let deps=departuresAt(v.s,c,null,{from:c.from-30}).filter(d=>!stopClosed(v.s,d.p.r,addDays(c.key,d.tmrw?1:0)));
   const t0=deps.find(d=>d.tmrw); if(t0) deps=deps.filter(d=>!d.tmrw||d.tm<=t0.tm+NEXT_DAY_HOURS*3600);
   const lastM=lastTimes(departuresAt(v.s,c,null,{from:-1e9}));
-  let h=`<div class="dhead"><button class="back" data-back aria-label="${T('back')}">${BACK}</button><div class="main"><h2>${esc(s.name)}</h2><div class="sub">${T('stopCode',{code:esc(s.code)})} · ${c.live?T('nextDeps'):prettyKey(c.key)}</div></div><button class="ibtn share" data-share aria-label="${T('share')}">${SHARE}</button><button class="star ${on?'on':''}" data-fav-stop="${v.s}" aria-label="${T(on?'favRemove':'favAdd')}">★</button></div><div class="pad">${fallbackBanner(c)}`;
+  let h=`<div class="dhead"><button class="back" data-back aria-label="${T('back')}">${BACK}</button><div class="main"><h2>${esc(s.name)}</h2><div class="sub">${T('stopCode',{code:esc(s.code)})} · ${c.live?T('nextDeps'):prettyKey(c.key)}</div></div><button class="ibtn share" data-share aria-label="${T('share')}">${SHARE}</button><button class="star ${on?'on':''}" data-fav-stop="${v.s}" aria-label="${T(on?'favRemove':'favAdd')}">★</button></div><div class="pad">${fallbackBanner(c)}${stopNotice(v.s,c)}`;
   h+=`<div class="xfer" style="gap:6px;margin:0 0 6px">${stopRoutes[v.s].map(r=>`<button data-line="${r}" data-hl="${v.s}">${badge(r)}</button>`).join('')}</div>`;
   h+=`<a class="linkbtn" href="https://maps.apple.com/?ll=${s.lat},${s.lon}&q=${encodeURIComponent(s.name)}" target="_blank" rel="noopener">${T('apple')}</a><a class="linkbtn" href="https://www.google.com/maps/search/?api=1&query=${s.lat},${s.lon}" target="_blank" rel="noopener">${T('google')}</a>`;
   h+=`<div class="eyebrow">${T('departures')}</div><div class="list">`;
@@ -1159,12 +1206,12 @@ function drawRoutes(sel){
   if(reopen!=null){ const s=S[reopen]; const np=stopPop(reopen); np.options.autoPan=false; np.setLatLng([s.lat,s.lon]).openOn(map); }
 }
 function stopPopup(i){
-  const c=ctx(); const deps=departuresAt(i,c,null,{from:c.from-30}), lastM=lastTimes(departuresAt(i,c,null,{from:-1e9}));
+  const c=ctx(); const deps=departuresAt(i,c,null,{from:c.from-30}).filter(d=>!stopClosed(i,d.p.r,addDays(c.key,d.tmrw?1:0))), lastM=lastTimes(departuresAt(i,c,null,{from:-1e9}));
   const groups=new Map();
   for(const d of deps){const k=d.p.r+'|'+d.p.h;if(!groups.has(k))groups.set(k,{r:d.p.r,h:d.p.h,pid:d.p.id,t:[]});const g=groups.get(k);if(g.t.length<3)g.t.push(d)}
-  const served=stopRoutes[i].filter(r=>![...groups.values()].some(g=>g.r===r));
+  const served=stopRoutes[i].filter(r=>!stopClosed(i,r,c.key)&&![...groups.values()].some(g=>g.r===r));
   const rows=[...groups.values()].sort((a,b)=>a.t[0].tm-b.t[0].tm).map(g=>`<li><button class="pl" data-line="${g.r}" data-dirp="${g.pid}" data-hl="${i}">${badge(g.r,'sm')}<span class="ph">${esc(g.h)}</span></button><span class="pt">${g.t.map((d,n)=>{const tm=d.tm,df=tm-c.nowSec;const tag=(d.tmrw&&!(n>0&&g.t[n-1].tmrw)?`<small class="tmrw">${T('tomorrow')}</small> `:'')+(isLast(d,lastM)?`<small class="lastbus">${T('lastBus')}</small> `:'');return tag+(n===0&&c.live&&df<60?T('due'):n===0&&c.live&&df<=1200?T('min',{n:Math.floor(df/60)}):hhmm(tm))}).join(' · ')}</span></li>`).join('');
-  return `<div class="pop"><h4>${esc(S[i].name)}</h4><div class="code">${T('stopCode',{code:esc(S[i].code)})} · ${c.live?T('nextBuses'):prettyKey(c.key)}</div><ul>${rows||`<li>${T(c.live?'noMoreToday':'noBusesDay')}</li>`}</ul>${served.length?`<div class="code" style="margin-bottom:6px">${T('alsoStops')} ${served.map(r=>badge(r,'sm')).join(' ')}</div>`:''}<button data-stop="${i}">${T('fullTT')}</button></div>`;
+  return `<div class="pop"><h4>${esc(S[i].name)}</h4><div class="code">${T('stopCode',{code:esc(S[i].code)})} · ${c.live?T('nextBuses'):prettyKey(c.key)}</div>${stopNotice(i,c,true)}<ul>${rows||`<li>${T(c.live?'noMoreToday':'noBusesDay')}</li>`}</ul>${served.length?`<div class="code" style="margin-bottom:6px">${T('alsoStops')} ${served.map(r=>badge(r,'sm')).join(' ')}</div>`:''}<button data-stop="${i}">${T('fullTT')}</button></div>`;
 }
 /* Your location: the first tap finds you and opens the nearest stop; from then on the dot
    follows you live (watchPosition), gliding between fixes. Tapping again centres the map on you
