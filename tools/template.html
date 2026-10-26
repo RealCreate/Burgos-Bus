@@ -775,11 +775,16 @@ function render(keepScroll){
   $('#grow').setAttribute('aria-label',T(st.full?'shrink':'expand'));
   $('#grow svg').style.transform=st.full?'rotate(180deg)':'';
   if(st.panel){
+    /* A refresh in place (live times, the clock) mustn't replay the slide-in from the last navigation,
+       which stays on the panel as a class and would run again on the new content, nor reset a row of
+       chips you've scrolled sideways. */
+    const chipsX=keepScroll?[...view.querySelectorAll('.chips')].map(c=>c.scrollLeft):[];
+    if(keepScroll) view.classList.remove('nav-push','nav-pop');
     if(top&&top.kind==='line') view.innerHTML=lineView(top);
     else if(top&&top.kind==='stop') view.innerHTML=stopView(top);
     else if(st.tab==='lines') view.innerHTML=linesView();
     else view.innerHTML=stopsView();
-    if(keepScroll) view.scrollTop=y;
+    if(keepScroll){ view.scrollTop=y; view.querySelectorAll('.chips').forEach((c,i)=>{ if(chipsX[i]) c.scrollLeft=chipsX[i]; }); }
     /* iOS-style navigation: deeper slides in from the right, back returns from the left */
     const depth=st.stack.length;
     if(!keepScroll&&navPrev.open&&depth!==navPrev.depth){
