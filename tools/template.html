@@ -224,6 +224,11 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .parked .veh .body{opacity:.72}
 .parked .veh .arrow{opacity:.55}
 .bus.parked{opacity:.65}
+/* stops added by a diversion: dashed warning ring, no timetable */
+.stop.tmp .dot{border-color:var(--warn);border-style:dashed;background:var(--surface)}
+.stop.tmp .nm b{color:var(--ink)}
+.nearyou.tmpnew{background:var(--warn);color:#fff}
+.tm .lvd{box-shadow:0 0 0 1.5px #fff}
 /* live GPS buses: a green ring round the bus on the map, a green dot on the line diagram */
 .veh .lv{position:absolute;inset:3px;border-radius:50%;border:2.5px solid var(--live);box-shadow:0 0 0 1.5px var(--surface);opacity:.9;pointer-events:none;animation:pulse 2s infinite}
 @media (prefers-reduced-motion:reduce){.veh .lv{animation:none}}
@@ -535,6 +540,48 @@ const wday = k => new Date(keyToUTC(k)).getUTCDay();
 const prettyKey = k => dfmt(k,{weekday:'short',day:'numeric',month:'short'});
 const longKey = k => dfmt(k,{day:'numeric',month:'short',year:'numeric'});
 const wdayLong = k => dfmt(k,{weekday:'long'});
+/* ---------- temporary service changes the council's timetable file doesn't include yet ----------
+   Each notice shows itself from `from` to `to` (inclusive) and then disappears on its own; delete it
+   once the new timetable file covers the change. Closed stops are listed by stop code (both sides of
+   the street have their own code). alt: [name, isNewStop]. add: [stop code, [stop codes]] puts those
+   stops into the line's stop list just before that stop (only the direction that has it). */
+const NOTICES=[{
+  from:'20261015', to:'20261231', title:'dvWorks',   /* Alfonso VIII works; council expects them to finish by the end of 2026 */
+  lines:{
+    '05':{closed:['PA00156','PA00310','PA00029','PA00308','PA00185','PA00267'],
+          alt:[['Reina Leonor – Hospital Militar',1],['Hospital Militar – P.º de los Comendadores'],['Pte. Malatos']]},
+    '07':{closed:['PA00029','PA00308','PA00156','PA00310','PA00128','PA00309'],
+          alt:[['Reina Leonor',1],['Pte. Malatos']]},
+    'C1':{closed:['PA00603','PA00495','PA00185','PA00029','PA00156','PA00496'],
+          alt:[['Caleruega 5'],['Caleruega 20B',1],['Navas de Tolosa – Claustrillas',1]],
+          add:[['PA00628',['PA00494','PA00995','PA00996']]]},
+    'C2':{closed:['PA00500','PA00310','PA00308','PA00267','PA00501'],
+          alt:[['Navas de Tolosa – Parque',1]],
+          add:[['PA00580',['PA00997']]]},
+    '22':{closed:['PA00500','PA00310','PA00308','PA00267','PA00501','PA00580','PA00603','PA00495','PA00185','PA00029','PA00156','PA00496'],
+          alt:[['Caleruega 5'],['Caleruega 20B',1],['Navas de Tolosa – Claustrillas',1],['Navas de Tolosa – Parque',1]],
+          add:[['PA00628',['PA00494','PA00995','PA00996']],['PA00580',['PA00997']]]}
+  }}];
+/* The new temporary stops, keyed by the name used in alt, with the city's own stop codes and positions
+   (from its bus-tracking data, 26 Oct). Navas de Tolosa is two stops a few metres apart on either side
+   of the street: Claustrillas for C1 and 22 towards the university, Parque for C2 and 22 towards HUBU.
+   They're added as stops of their own, so they can be opened, searched and shared and show live times;
+   they have no timetable. */
+const TEMP_STOPS={
+  'Caleruega 20B':{code:'PA00995',ll:[42.334432,-3.717477]},
+  'Navas de Tolosa – Claustrillas':{code:'PA00996',ll:[42.338281,-3.727144]},
+  'Navas de Tolosa – Parque':{code:'PA00997',ll:[42.338247,-3.727292]}};
+{ const key=madridNow().key;
+  for(const [name,t] of Object.entries(TEMP_STOPS)){
+    const n=NOTICES.find(x=>key>=x.from&&key<=x.to&&Object.values(x.lines).some(l=>l.alt.some(a=>a[0]===name)));
+    if(!n) continue;
+    const have=S.findIndex(x=>x.code===t.code);
+    if(have>=0&&stopRefs[have].length) continue;   /* the timetable file has it now */
+    const i=S.length; t.i=i; t.n=n;
+    S.push({i,code:t.code,name,lat:t.ll[0],lon:t.ll[1],temp:true}); stopRefs.push([]);
+    stopRoutes.push(R.filter(r=>n.lines[r.n]&&n.lines[r.n].alt.some(a=>a[0]===name)).map(r=>r.i));
+  }
+}
 const resolved = {};
 function resolveKey(k){
   if(resolved[k]) return resolved[k];
@@ -571,7 +618,7 @@ function syncLink(){
 /* opens the stop or line named in a link; false when there is nothing (valid) to open */
 function openFromHash(hash){
   const q=new URLSearchParams((hash||'').replace(/^#/,''));
-  if(q.has('stop')){ const i=S.findIndex(x=>x.code===q.get('stop')); if(i>=0&&stopRefs[i].length){ openStop(i); return true; } }
+  if(q.has('stop')){ const i=S.findIndex(x=>x.code===q.get('stop')); if(i>=0&&(stopRefs[i].length||S[i].temp)){ openStop(i); return true; } }
   if(q.has('line')){ const r=R.findIndex(x=>x.n===q.get('line')); if(r>=0){ openLine(r,{dir:q.has('dir')?+q.get('dir'):null}); return true; } }
   return false;
 }
@@ -827,37 +874,31 @@ function fallbackBanner(c){
   return `<div class="banner">${T('banner',{from:longKey(dataKeys[0]),to:longKey(dataKeys[dataKeys.length-1]),day:prettyKey(c.key),wday:wdayLong(r.key),date:longKey(r.key)})}</div>`;
 }
 
-/* ---------- temporary service changes the council's timetable file doesn't include yet ----------
-   Each notice shows itself from `from` to `to` (inclusive) and then disappears on its own; delete it
-   once the new timetable file covers the change. Closed stops are listed by stop code (both sides of
-   the street have their own code). alt: [name, isNewStop]. */
-const NOTICES=[{
-  from:'20261015', to:'20261231', title:'dvWorks',   /* Alfonso VIII works; council expects them to finish by the end of 2026 */
-  lines:{
-    '05':{closed:['PA00156','PA00310','PA00029','PA00308','PA00185','PA00267'],
-          alt:[['Reina Leonor – Hospital Militar',1],['Hospital Militar – P.º de los Comendadores'],['Pte. Malatos']]},
-    '07':{closed:['PA00029','PA00308','PA00156','PA00310','PA00128','PA00309'],
-          alt:[['Reina Leonor',1],['Pte. Malatos']]},
-    'C1':{closed:['PA00603','PA00495','PA00185','PA00029','PA00156','PA00496'],
-          alt:[['Caleruega 5'],['Caleruega 20B'],['Navas de Tolosa – Claustrillas',1]]},
-    'C2':{closed:['PA00500','PA00310','PA00308','PA00267','PA00501'],
-          alt:[['Navas de Tolosa – Claustrillas',1]]},
-    '22':{closed:['PA00500','PA00310','PA00308','PA00267','PA00501','PA00580','PA00603','PA00495','PA00185','PA00029','PA00156','PA00496'],
-          alt:[['Caleruega 5'],['Caleruega 20B'],['Navas de Tolosa – Claustrillas',1]]}
-  }}];
-/* Where the new temporary stops are, keyed by the name used in alt. Checked on site (21 Oct): the
-   Navas de Tolosa stop serves C1 on one side of the street and C2/22 on the other, a few metres apart. */
-const TEMP_STOPS={'Navas de Tolosa – Claustrillas':[42.33806,-3.72731]};
 function tempStops(key){
   const out=new Map();
   for(const n of NOTICES){ if(key<n.from||key>n.to) continue;
     for(const [ln,l] of Object.entries(n.lines)){ const rr=R.find(x=>x.n===ln); if(!rr) continue;
-      for(const a of l.alt){ const ll=TEMP_STOPS[a[0]]; if(!ll) continue;
-        if(!out.has(a[0])) out.set(a[0],{name:a[0],ll,rs:[],n});
+      for(const a of l.alt){ const t=TEMP_STOPS[a[0]]; if(!t||t.i==null) continue;
+        if(!out.has(a[0])) out.set(a[0],{name:a[0],ll:t.ll,i:t.i,rs:[],n});
         if(!out.get(a[0]).rs.includes(rr.i)) out.get(a[0]).rs.push(rr.i); } } }
   return [...out.values()];
 }
 const codeIdx=new Map(S.map(x=>[x.code,x.i]));
+/* the temporary stops to show in line r's list on day key: Map(stop index it goes before -> [stop indices]) */
+function tempAdds(r,key){
+  const out=new Map();
+  for(const n of NOTICES){ if(key<n.from||key>n.to) continue; const l=n.lines[R[r].n]; if(!l||!l.add) continue;
+    for(const [before,codes] of l.add){ const b=codeIdx.get(before); if(b==null) continue;
+      out.set(b,codes.map(c=>codeIdx.get(c)).filter(i=>i!=null)); } }
+  return out;
+}
+const tempOf=i=>S[i]&&S[i].temp?Object.values(TEMP_STOPS).find(t=>t.i===i):null;
+function tempStopNotice(i,compact){
+  const t=tempOf(i); if(!t) return '';
+  const rs=stopRoutes[i].map(r=>badge(r,'sm')).join(' ');
+  if(compact) return `<div class="dvpop">⚠ ${T('dvTempStop')} ${rs}</div>`;
+  return `<div class="banner dv"><b>⚠ ${T('dvTempStop')} ${rs}</b><div>${T(t.n.title)}</div><div class="dvnote">${T('dvSince',{date:longKey(t.n.from)})}</div></div>`;
+}
 function noticeFor(r,key){
   for(const n of NOTICES){ if(key<n.from||key>n.to) continue; const l=n.lines[R[r].n];
     if(l) return {n,l,closed:new Set(l.closed.map(c=>codeIdx.get(c)).filter(i=>i!=null))}; }
@@ -956,7 +997,17 @@ function lineView(v){
   }
   h+=`<div class="tl" style="--rc:${x.col};--rt:${x.txt}">`;
   const filt=q=>q.r===r&&q.d===v.d;
+  /* stops the diversion adds (not in the timetable): live times for this line, tap to open the stop */
+  const adds=tempAdds(r,c.key);
+  const addRow=s=>{
+    const la=liveArrivals(s), mine=la&&la.filter(d=>d.r===r).slice(0,3);
+    const times=mine&&mine.length?mine.map((d,n)=>`<span class="tm ${n===0?'next':''}" title="${T('live')}"><span class="livedot lvd"></span>${liveWhen(d.sec)}${d.last?`<em class="lastbus">${T('lastBus')}</em>`:''}</span>`).join('')
+      :`<span class="tm none">⚠ ${T('dvTitle')}</span>`;
+    const xf=stopRoutes[s].filter(q=>q!==r).map(q=>badge(q,'sm')).join('');
+    return `<div class="stop tmp ${v.hl===s?'hl':''}"><span class="dot"></span><button class="nm" data-stop="${s}"><b>${esc(S[s].name)}</b><span class="code">${esc(S[s].code)}</span>${S[s].temp?`<span class="nearyou tmpnew">${T('dvNew')}</span>`:''}</button>${xf?`<div class="xfer">${xf}</div>`:''}<div class="times">${times}</div></div>`;
+  };
   p.s.forEach((s,i)=>{
+    if(adds.has(s)) h+=adds.get(s).map(addRow).join('');
     const last=i===p.s.length-1;
     const deps=departuresAt(s,c,filt,{from:c.from-30,terminus:last});
     const shown=deps.slice(0,3), lastM=lastTimes(departuresAt(s,c,filt,{from:-1e9,terminus:last}));
@@ -994,7 +1045,7 @@ function stopsView(){
 }
 function stopsResults(){
   const nq=norm(st.sq.trim());
-  const list=S.filter(s=>stopRefs[s.i].length&&(!nq||norm(s.name).includes(nq)||s.code.toLowerCase().includes(nq))).sort((a,b)=>a.name.localeCompare(b.name,'es'));
+  const list=S.filter(s=>(stopRefs[s.i].length||s.temp)&&(!nq||norm(s.name).includes(nq)||s.code.toLowerCase().includes(nq))).sort((a,b)=>a.name.localeCompare(b.name,'es'));
   const row=s=>{const rs=stopRoutes[s.i];const on=fav.stops.includes(s.i);return `<div class="row"><button class="row" style="padding:0;border:0;flex:1;min-width:0" data-stop="${s.i}"><div class="main"><div class="t1">${esc(s.name)}</div><div class="t2">${esc(s.code)}</div><div class="xfer">${rs.map(r=>badge(r,'sm')).join('')}</div></div></button><button class="star ${on?'on':''}" data-fav-stop="${s.i}" aria-label="${T(on?'favRemove':'favAdd')}">★</button></div>`};
   let h='';
   const favs=fav.stops.filter(i=>S[i]);
@@ -1011,7 +1062,7 @@ function stopView(v){
   let deps=departuresAt(v.s,c,null,{from:c.from-30}).filter(d=>!stopClosed(v.s,d.p.r,addDays(c.key,d.tmrw?1:0)));
   const t0=deps.find(d=>d.tmrw); if(t0) deps=deps.filter(d=>!d.tmrw||d.tm<=t0.tm+NEXT_DAY_HOURS*3600);
   const lastM=lastTimes(departuresAt(v.s,c,null,{from:-1e9}));
-  let h=`<div class="dhead"><button class="back" data-back aria-label="${T('back')}">${BACK}</button><div class="main"><h2>${esc(s.name)}</h2><div class="sub">${T('stopCode',{code:esc(s.code)})} · ${c.live?T('nextDeps'):prettyKey(c.key)}</div></div><button class="ibtn share" data-share aria-label="${T('share')}">${SHARE}</button><button class="star ${on?'on':''}" data-fav-stop="${v.s}" aria-label="${T(on?'favRemove':'favAdd')}">★</button></div><div class="pad">${fallbackBanner(c)}${stopNotice(v.s,c)}`;
+  let h=`<div class="dhead"><button class="back" data-back aria-label="${T('back')}">${BACK}</button><div class="main"><h2>${esc(s.name)}</h2><div class="sub">${T('stopCode',{code:esc(s.code)})} · ${c.live?T('nextDeps'):prettyKey(c.key)}</div></div><button class="ibtn share" data-share aria-label="${T('share')}">${SHARE}</button><button class="star ${on?'on':''}" data-fav-stop="${v.s}" aria-label="${T(on?'favRemove':'favAdd')}">★</button></div><div class="pad">${S[v.s].temp?'':fallbackBanner(c)}${stopNotice(v.s,c)}${tempStopNotice(v.s)}`;
   h+=`<div class="xfer" style="gap:6px;margin:0 0 6px">${stopRoutes[v.s].map(r=>`<button data-line="${r}" data-hl="${v.s}">${badge(r)}</button>`).join('')}</div>`;
   h+=`<a class="linkbtn" href="https://maps.apple.com/?ll=${s.lat},${s.lon}&q=${encodeURIComponent(s.name)}" target="_blank" rel="noopener">${T('apple')}</a><a class="linkbtn" href="https://www.google.com/maps/search/?api=1&query=${s.lat},${s.lon}" target="_blank" rel="noopener">${T('google')}</a>`;
   const la=liveArrivals(v.s);
@@ -1021,6 +1072,8 @@ function stopView(v){
       h+=`<button class="dep" data-line="${d.r}"${pp?` data-dirp="${pp.id}"`:''} data-hl="${v.s}">${badge(d.r)}<div class="main"><div class="hs">${esc(d.h||R[d.r].name)}${d.last?` <span class="lastbus">${T('lastBus')}</span>`:''}</div><div class="via">${d.m>0?T('away',{d:fmtDist(d.m)})+' · ':''}${T('busNo',{n:esc(d.bus)})}</div></div><div class="when ${d.sec<=600?'soon':''}">${liveWhen(d.sec)}</div></button>`; });
     h+=`</div><p class="note">${T('liveNote')}</p>`;
   }
+  /* a temporary stop has no timetable: live times or nothing */
+  if(s.temp){ if(!la) h+=`<div class="list"><div class="empty">${T('noneRunning')}</div></div>`; return h+'</div>'; }
   h+=`<div class="eyebrow">${T(la?'scheduled':'departures')}</div><div class="list">`;
   if(!deps.length) h+=`<div class="empty">${T(c.live?'noDepToday':'noDepDay')}</div>`;
   let ruled=false;
@@ -1242,17 +1295,12 @@ function drawRoutes(sel){
     const on=r0>=0, base=on?7:6;
     const m=L.circleMarker(x.ll,{radius:base,color:warn,weight:2.5,dashArray:'3 2',fillColor:surf,fillOpacity:1});
     m._b={base,weight:2.5,on,faded:false,fill:surf,col:warn,temp:true};
-    m.on('click',()=>{m.bindPopup(tempPop(x)).openPopup()});
+    m.on('click',()=>{m.bindPopup(stopPop(x.i)).openPopup()});
     stopMarkers.push(m);
   }
   baseLayer.addTo(map); stopLayer.addTo(map); styleStops();
   if(reopen!=null){ const s=S[reopen]; const np=stopPop(reopen); np.options.autoPan=false; np.setLatLng([s.lat,s.lon]).openOn(map); }
 }
-function tempPopup(x){
-  const rows=x.rs.map(r=>`<li><button class="pl" data-line="${r}">${badge(r,'sm')}<span class="ph">${esc(R[r].name)}</span></button></li>`).join('');
-  return `<div class="pop"><h4>${esc(x.name)}</h4><div class="code">⚠ ${T('dvTitle')} · ${T(x.n.title)}</div><div class="dvpop">${T('dvTempStop')}</div><ul>${rows}</ul><div class="code">${T('dvSince',{date:longKey(x.n.from)})}</div></div>`;
-}
-function tempPop(x){return L.popup({maxWidth:270,autoPanPaddingTopLeft:popPad()}).setContent(tempPopup(x))}
 function stopPopup(i){
   const c=ctx(); const deps=departuresAt(i,c,null,{from:c.from-30}).filter(d=>!stopClosed(i,d.p.r,addDays(c.key,d.tmrw?1:0))), lastM=lastTimes(departuresAt(i,c,null,{from:-1e9}));
   const groups=new Map();
@@ -1264,8 +1312,9 @@ function stopPopup(i){
     for(const d of la){const k=d.r+'|'+norm(d.h);if(!lg.has(k))lg.set(k,{r:d.r,h:d.h||R[d.r].name,t:[]});const g=lg.get(k);if(g.t.length<3)g.t.push(d)}
     const lrows=[...lg.values()].map(g=>{const pp=patFor(g.r,g.h);return `<li><button class="pl" data-line="${g.r}"${pp?` data-dirp="${pp.id}"`:''} data-hl="${i}">${badge(g.r,'sm')}<span class="ph">${esc(g.h)}</span></button><span class="pt">${g.t.map(d=>(d.last?`<small class="lastbus">${T('lastBus')}</small> `:'')+liveWhen(d.sec)).join(' · ')}</span></li>`}).join('');
     const lserved=stopRoutes[i].filter(r=>![...lg.values()].some(g=>g.r===r));
-    return `<div class="pop"><h4>${esc(S[i].name)}</h4><div class="code">${T('stopCode',{code:esc(S[i].code)})} · <span class="live"><span class="livedot"></span>${T('live')}</span></div>${stopNotice(i,c,true)}<ul>${lrows}</ul>${lserved.length?`<div class="code" style="margin-bottom:6px">${T('alsoStops')} ${lserved.map(r=>badge(r,'sm')).join(' ')}</div>`:''}<button data-stop="${i}">${T('fullTT')}</button></div>`;
+    return `<div class="pop"><h4>${esc(S[i].name)}</h4><div class="code">${T('stopCode',{code:esc(S[i].code)})} · <span class="live"><span class="livedot"></span>${T('live')}</span></div>${stopNotice(i,c,true)}${tempStopNotice(i,true)}<ul>${lrows}</ul>${lserved.length?`<div class="code" style="margin-bottom:6px">${T('alsoStops')} ${lserved.map(r=>badge(r,'sm')).join(' ')}</div>`:''}<button data-stop="${i}">${T('fullTT')}</button></div>`;
   }
+  if(S[i].temp) return `<div class="pop"><h4>${esc(S[i].name)}</h4><div class="code">${T('stopCode',{code:esc(S[i].code)})}</div>${tempStopNotice(i,true)}<ul><li>${T('noneRunning')}</li></ul><button data-stop="${i}">${T('fullTT')}</button></div>`;
   const served=stopRoutes[i].filter(r=>!stopClosed(i,r,c.key)&&![...groups.values()].some(g=>g.r===r));
   const rows=[...groups.values()].sort((a,b)=>a.t[0].tm-b.t[0].tm).map(g=>`<li><button class="pl" data-line="${g.r}" data-dirp="${g.pid}" data-hl="${i}">${badge(g.r,'sm')}<span class="ph">${esc(g.h)}</span></button><span class="pt">${g.t.map((d,n)=>{const tm=d.tm,df=tm-c.nowSec;const tag=(d.tmrw&&!(n>0&&g.t[n-1].tmrw)?`<small class="tmrw">${T('tomorrow')}</small> `:'')+(isLast(d,lastM)?`<small class="lastbus">${T('lastBus')}</small> `:'');return tag+(n===0&&c.live&&df<60?T('due'):n===0&&c.live&&df<=1200?T('min',{n:Math.floor(df/60)}):hhmm(tm))}).join(' · ')}</span></li>`).join('');
   return `<div class="pop"><h4>${esc(S[i].name)}</h4><div class="code">${T('stopCode',{code:esc(S[i].code)})} · ${c.live?T('nextBuses'):prettyKey(c.key)}</div>${stopNotice(i,c,true)}<ul>${rows||`<li>${T(c.live?'noMoreToday':'noBusesDay')}</li>`}</ul>${served.length?`<div class="code" style="margin-bottom:6px">${T('alsoStops')} ${served.map(r=>badge(r,'sm')).join(' ')}</div>`:''}<button data-stop="${i}">${T('fullTT')}</button></div>`;
@@ -1538,6 +1587,9 @@ function liveWanted(){
   const stops=new Set(); const top=st.stack[st.stack.length-1];
   if(st.panel&&top&&top.kind==='stop') stops.add(top.s);
   if(popupStop!=null) stops.add(popupStop);
+  /* the stops a diversion adds to the open line's list, for their live times */
+  if(st.panel&&top&&top.kind==='line'){ const p=P.find(q=>q.id===top.p), adds=tempAdds(top.r,ctx().key);
+    if(p) p.s.forEach(x=>(adds.get(x)||[]).forEach(i=>stops.add(i))); }
   return {lines,stops};
 }
 async function pollLine(r){
@@ -1702,7 +1754,7 @@ document.addEventListener('click',e=>{
   if(t.dataset.line!=null){if(map)map.closePopup();openLine(+t.dataset.line,{pat:t.dataset.dirp!=null?+t.dataset.dirp:null,keep:t.hasAttribute('data-keepdir'),hl:t.dataset.hl!=null?+t.dataset.hl:null});return}
   if(t.dataset.stop!=null){if(map)map.closePopup();openStop(+t.dataset.stop);return}
   if(t.dataset.tmp!=null){const x=tempStops(ctx().key).find(q=>q.name===t.dataset.tmp);
-    if(x&&map){if(st.full){st.full=false;render(true)}map.once('moveend',()=>tempPop(x).setLatLng(x.ll).openOn(map));map.fitBounds(L.latLng(x.ll).toBounds(400),Object.assign({maxZoom:17},fitPad()))}return}
+    if(x&&map){if(st.full){st.full=false;render(true)}map.once('moveend',()=>stopPop(x.i).setLatLng(x.ll).openOn(map));map.fitBounds(L.latLng(x.ll).toBounds(400),Object.assign({maxZoom:17},fitPad()))}return}
   const top=st.stack[st.stack.length-1];
   if(top&&top.kind==='line'){
     if(t.dataset.dir!=null){top.d=+t.dataset.dir;top.p=null;top.open=null;render();view.scrollTop=0;const el=top.hl==null&&view.querySelector('.stop.near');if(el)el.scrollIntoView({block:'center'});return}
