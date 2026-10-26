@@ -13,8 +13,18 @@ Live site: https://realcreate.github.io/Burgos-Bus/
 - **Links**: the address always matches what's open (`#stop=PA00305`, `#line=05&dir=1`), and the share button sends it, so you can share or bookmark a stop or line.
 - The last bus of the day on each line and direction is labelled, and once the location button has found you, lines open scrolled to your nearest stop.
 - **Install it**: in Safari tap Share → Add to Home Screen. It opens full-screen with the bus icon, and lines, stops and timetables keep working offline, and so do the parts of the street map you've already looked at.
+- **Live buses**: buses on the map and on a line's stop list show their real GPS position, and stops show live arrival times (minutes, distance and bus number), from the city's bus tracking. Live buses have a green ring on the map. When live data isn't available, positions and countdowns are estimated from the timetable as before.
 
-Bus positions are estimated from the timetable. Burgos does not currently publish a public live GPS feed.
+## Live data
+
+Live positions and arrival times come from the city's bus tracking, the same data its Bonobur app uses (`https://bonoburservicios.aytoburgos.es/app/api`). It isn't a published open-data feed, so it may change or stop working without notice; the site then falls back to the timetable by itself.
+
+The city's server only lets its own website read that data, so the site fetches it through a small relay: a Cloudflare Worker at `https://burgos-bus-api.filiplung.workers.dev`. Its code is in `tools/live-relay-worker.js`; to change it, open the Worker in the Cloudflare dashboard (Workers & Pages → burgos-bus-api → Edit code), paste the file and deploy. It only answers this site, and caches live data for 5 seconds so the city's server sees no more traffic than from its own app.
+
+What the site uses (paths after the relay address):
+
+- `/estadobus/obtenervehiculosenlinea/{line}`: GPS position of every bus on a line, e.g. `05` or `C1`
+- `/estadobus/ObtenerTiemposRutaPorParada/{stop}`: next buses at a stop, by stop number (`PA00500` → `500`)
 
 ## Updating the timetable
 
