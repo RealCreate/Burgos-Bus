@@ -31,8 +31,9 @@ def enc_poly(pts, prec=1e5):
 
 routes = rd('routes.txt')
 # Lines that exist only as internal codes in the feed, shown under the public line they belong to.
-# 73: the 5:30 and 6:30 trips Gamonal -> Pol. Ind. Villalonquejar, printed as special trips of line 19.
-MERGE = {'73': '19'}
+# (Line 73, Gamonal -> Pol. Ind. Villalonquejar, used to be merged into 19 here; it runs its own
+# route, so it's now a line of its own.)
+MERGE = {}
 _short = {r['route_id']: r['route_short_name'] for r in routes}
 _target = {s: next((r['route_id'] for r in routes if r['route_short_name'] == t), None) for s, t in MERGE.items()}
 _remap = {rid: _target[sn] for rid, sn in _short.items() if _target.get(sn)}

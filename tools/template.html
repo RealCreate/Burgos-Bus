@@ -580,7 +580,7 @@ let fav = {lines:[],stops:[]};
    reorders lines or stops. Older saves used list positions; LEGACY_LINES is the line order they used. */
 const LEGACY_LINES=['01','02','03','04','05','06','07','08','09','10','11','12','13','14','15','16','17','18','19','20','21','22','23','73','87','88','89','C1','C2'];
 const lineByCode=c=>R.findIndex(x=>x.n===c), stopByCode=c=>S.findIndex(x=>x.code===c);
-const loadLine=v=>{ const i=typeof v==='number'?lineByCode(LEGACY_LINES[v]==='73'?'19':LEGACY_LINES[v]):lineByCode(v); return i>=0?i:null; };
+const loadLine=v=>{ const i=typeof v==='number'?lineByCode(LEGACY_LINES[v]):lineByCode(v); return i>=0?i:null; };
 const loadStop=v=>{ const i=typeof v==='number'?(S[v]?v:-1):stopByCode(v); return i>=0?i:null; };
 const uniq=a=>[...new Set(a.filter(x=>x!=null))];
 try{const v=JSON.parse(localStorage.getItem('burgosbus-fav')||'null');if(v&&Array.isArray(v.lines)&&Array.isArray(v.stops))fav={lines:uniq(v.lines.map(loadLine)),stops:uniq(v.stops.map(loadStop))}}catch(e){}
@@ -1406,7 +1406,6 @@ function drawBuses(){
    server stops answering, everything quietly goes back to the timetable estimates. */
 const LIVE_API='https://burgos-bus-api.filiplung.workers.dev/estadobus/';
 const LIVE_STALE=45000;            /* older than this and the live data is dropped */
-const LINE_ALIAS={'73':'19'};       /* the tracking's internal line 73 = special trips of line 19 */
 const liveLines=new Map();          /* line index -> {at, buses:[{id,r,ruta,lat,lon,pl}]} */
 const liveStops=new Map();          /* stop index -> {at, rows:[{r,h,sec,m,last,bus}]} */
 const liveBusy=new Set();
@@ -1420,7 +1419,7 @@ async function liveGet(path){
 }
 const fresh=e=>!!e&&Date.now()-e.at<LIVE_STALE;
 function liveFor(r){ if(!ctx().live) return null; const e=liveLines.get(r); return fresh(e)?e:null; }
-const lineOfCode=code=>lineByCode(LINE_ALIAS[code]||code);
+const lineOfCode=code=>lineByCode(code);
 const stopNum=i=>parseInt(S[i].code.replace(/\D/g,''),10);
 const fmtDist=m=>m>=1000?(m/1000).toLocaleString(I18N[lang].loc,{maximumFractionDigits:1})+' km':Math.round(m/10)*10+' m';
 
@@ -1542,12 +1541,11 @@ function liveWanted(){
   return {lines,stops};
 }
 async function pollLine(r){
-  const codes=[R[r].n,...Object.keys(LINE_ALIAS).filter(k=>LINE_ALIAS[k]===R[r].n)];
-  const res=await Promise.all(codes.map(code=>liveGet('obtenervehiculosenlinea/'+encodeURIComponent(code))));
-  if(res[0]==null) return false;
+  const list=await liveGet('obtenervehiculosenlinea/'+encodeURIComponent(R[r].n));
+  if(list==null) return false;
   const buses=[];
-  res.forEach(list=>(list||[]).forEach(v=>{ const lat=+v.lat, lon=+v.lng;
-    if(isFinite(lat)&&isFinite(lon)&&Math.abs(lat-42.34)<0.3&&Math.abs(lon+3.7)<0.3) buses.push({id:v.vehiculo,r,ruta:v.ruta,lat,lon}); }));
+  list.forEach(v=>{ const lat=+v.lat, lon=+v.lng;
+    if(isFinite(lat)&&isFinite(lon)&&Math.abs(lat-42.34)<0.3&&Math.abs(lon+3.7)<0.3) buses.push({id:v.vehiculo,r,ruta:v.ruta,lat,lon}); });
   buses.forEach(b=>{b.pl=placeLive(b)});
   liveLines.set(r,{at:Date.now(),buses}); return true;
 }
