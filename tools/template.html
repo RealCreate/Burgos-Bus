@@ -543,15 +543,19 @@ const wdayLong = k => dfmt(k,{weekday:'long'});
 /* ---------- temporary service changes the council's timetable file doesn't include yet ----------
    Each notice shows itself from `from` to `to` (inclusive) and then disappears on its own; delete it
    once the new timetable file covers the change. Closed stops are listed by stop code (both sides of
-   the street have their own code). alt: [name, isNewStop]. add: [stop code, [stop codes]] puts those
-   stops into the line's stop list just before that stop (only the direction that has it). */
+   the street have their own code). alt: [name, isNewStop]. add: [stop code, [stop codes], 'after'?]
+   puts those stops into the line's stop list just before (or after) that stop, in whichever direction
+   has it. Closures, new stops and their order were checked against the council's notices in the buses
+   and its bus-tracking routes (26 Oct). */
 const NOTICES=[{
   from:'20261015', to:'20261231', title:'dvWorks',   /* Alfonso VIII works; council expects them to finish by the end of 2026 */
   lines:{
     '05':{closed:['PA00156','PA00310','PA00029','PA00308','PA00185','PA00267'],
-          alt:[['Reina Leonor – Hospital Militar',1],['Hospital Militar – P.º de los Comendadores'],['Pte. Malatos']]},
-    '07':{closed:['PA00029','PA00308','PA00156','PA00310','PA00128','PA00309'],
-          alt:[['Reina Leonor',1],['Pte. Malatos']]},
+          alt:[['Reina Leonor – Hospital Militar',1],['Reina Leonor – Monasterio de las Huelgas',1],['Hospital Militar – P.º de los Comendadores'],['Pte. Malatos']],
+          add:[['PA00495',['PA00998','PA00710'],'after'],['PA00501',['PA00999']]]},
+    '07':{closed:['PA00029','PA00308','PA00156','PA00310','PA00128','PA00309','PA00185','PA00267'],
+          alt:[['Reina Leonor – Monasterio de las Huelgas',1],['Reina Leonor – Hospital Militar',1],['Pte. Malatos']],
+          add:[['PA00194',['PA00998','PA00710'],'after'],['PA00266',['PA00709','PA00999']]]},
     'C1':{closed:['PA00603','PA00495','PA00185','PA00029','PA00156','PA00496'],
           alt:[['Caleruega 5'],['Caleruega 20B',1],['Navas de Tolosa – Claustrillas',1]],
           add:[['PA00628',['PA00494','PA00995','PA00996']]]},
@@ -570,7 +574,10 @@ const NOTICES=[{
 const TEMP_STOPS={
   'Caleruega 20B':{code:'PA00995',ll:[42.334432,-3.717477]},
   'Navas de Tolosa – Claustrillas':{code:'PA00996',ll:[42.338281,-3.727144]},
-  'Navas de Tolosa – Parque':{code:'PA00997',ll:[42.338247,-3.727292]}};
+  'Navas de Tolosa – Parque':{code:'PA00997',ll:[42.338247,-3.727292]},
+  /* Reina Leonor: Monasterio de las Huelgas towards El Pilar, Hospital Militar towards the centre (05, 07) */
+  'Reina Leonor – Monasterio de las Huelgas':{code:'PA00998',ll:[42.337693,-3.716914]},
+  'Reina Leonor – Hospital Militar':{code:'PA00999',ll:[42.338639,-3.717158]}};
 { const key=madridNow().key;
   for(const [name,t] of Object.entries(TEMP_STOPS)){
     const n=NOTICES.find(x=>key>=x.from&&key<=x.to&&Object.values(x.lines).some(l=>l.alt.some(a=>a[0]===name)));
@@ -884,12 +891,13 @@ function tempStops(key){
   return [...out.values()];
 }
 const codeIdx=new Map(S.map(x=>[x.code,x.i]));
-/* the temporary stops to show in line r's list on day key: Map(stop index it goes before -> [stop indices]) */
+/* the stops to add to line r's list on day key: Map(stop index -> {before:[stop indices], after:[...]}) */
 function tempAdds(r,key){
   const out=new Map();
   for(const n of NOTICES){ if(key<n.from||key>n.to) continue; const l=n.lines[R[r].n]; if(!l||!l.add) continue;
-    for(const [before,codes] of l.add){ const b=codeIdx.get(before); if(b==null) continue;
-      out.set(b,codes.map(c=>codeIdx.get(c)).filter(i=>i!=null)); } }
+    for(const [at,codes,where] of l.add){ const b=codeIdx.get(at); if(b==null) continue;
+      if(!out.has(b)) out.set(b,{before:[],after:[]});
+      out.get(b)[where==='after'?'after':'before'].push(...codes.map(c=>codeIdx.get(c)).filter(i=>i!=null)); } }
   return out;
 }
 const tempOf=i=>S[i]&&S[i].temp?Object.values(TEMP_STOPS).find(t=>t.i===i):null;
@@ -1007,7 +1015,7 @@ function lineView(v){
     return `<div class="stop tmp ${v.hl===s?'hl':''}"><span class="dot"></span><button class="nm" data-stop="${s}"><b>${esc(S[s].name)}</b><span class="code">${esc(S[s].code)}</span>${S[s].temp?`<span class="nearyou tmpnew">${T('dvNew')}</span>`:''}</button>${xf?`<div class="xfer">${xf}</div>`:''}<div class="times">${times}</div></div>`;
   };
   p.s.forEach((s,i)=>{
-    if(adds.has(s)) h+=adds.get(s).map(addRow).join('');
+    if(adds.has(s)) h+=adds.get(s).before.map(addRow).join('');
     const last=i===p.s.length-1;
     const deps=departuresAt(s,c,filt,{from:c.from-30,terminus:last});
     const shown=deps.slice(0,3), lastM=lastTimes(departuresAt(s,c,filt,{from:-1e9,terminus:last}));
@@ -1034,6 +1042,7 @@ function lineView(v){
     let buses='';
     (busAt[i]||[]).forEach(a=>{buses+=`<span class="bus${a.wait?' parked':''}${a.live?' live':''}" style="top:calc(21px + ${(a.f*100).toFixed(1)}%)" title="${T('between',{a:esc(S[p.s[i]].name),b:esc(S[p.s[i+1]]?.name||'')})}">${BUS_SVG}</span>`});
     h+=`<div class="stop ${off?'closed':''} ${i===0?'first':''} ${last?'last':''} ${v.hl===s?'hl':''} ${i===nearI?'near':''}" id="st-${i}"><span class="dot"></span>${buses}<button class="nm" data-open="${i}" aria-expanded="${open}"><b>${esc(S[s].name)}</b><span class="code">${esc(S[s].code)}</span>${i===nearI?`<span class="nearyou">${T('nearYou')}</span>`:''}</button>${xf?`<div class="xfer">${xf}</div>`:''}<div class="times">${times}</div>${full}</div>`;
+    if(adds.has(s)) h+=adds.get(s).after.map(addRow).join('');
   });
   h+=`</div><p class="note">${T('tapStop')}</p></div>`;
   return h;
@@ -1590,7 +1599,7 @@ function liveWanted(){
   if(popupStop!=null) stops.add(popupStop);
   /* the stops a diversion adds to the open line's list, for their live times */
   if(st.panel&&top&&top.kind==='line'){ const p=P.find(q=>q.id===top.p), adds=tempAdds(top.r,ctx().key);
-    if(p) p.s.forEach(x=>(adds.get(x)||[]).forEach(i=>stops.add(i))); }
+    if(p) p.s.forEach(x=>{ const a=adds.get(x); if(a) a.before.concat(a.after).forEach(i=>stops.add(i)); }); }
   return {lines,stops};
 }
 async function pollLine(r){
