@@ -224,6 +224,11 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .parked .veh .body{opacity:.72}
 .parked .veh .arrow{opacity:.55}
 .bus.parked{opacity:.65}
+/* live GPS buses: a green ring round the bus on the map, a green dot on the line diagram */
+.veh .lv{position:absolute;inset:3px;border-radius:50%;border:2.5px solid var(--live);box-shadow:0 0 0 1.5px var(--surface);opacity:.9;pointer-events:none;animation:pulse 2s infinite}
+@media (prefers-reduced-motion:reduce){.veh .lv{animation:none}}
+.bus.live::after{content:"";position:absolute;right:-3px;top:-3px;width:8px;height:8px;border-radius:50%;background:var(--live);box-shadow:0 0 0 2px var(--surface)}
+.eyebrow .livedot{margin-right:6px}
 .veh .body{position:absolute;left:50%;top:50%;width:22.4px;height:48.2px;margin:-24.1px 0 0 -11.2px;overflow:visible;pointer-events:auto;cursor:pointer;filter:drop-shadow(0 2px 3px rgba(0,0,0,.35))}
 .veh .arrow{position:absolute;left:50%;top:-6px;margin-left:-6px;width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-bottom:8px solid var(--muted);filter:drop-shadow(0 0 1.5px var(--surface))}
 .veh .num{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font:700 11.5px/1 var(--font-display);letter-spacing:-.02em;color:var(--t);font-variant-numeric:tabular-nums;white-space:nowrap;pointer-events:none}
@@ -874,7 +879,7 @@ function stopNotice(i,c,compact){
 }
 
 function lineRow(r,c){
-  const pats=routeP[r]; const act=activeTrips(pats,c).length;
+  const pats=routeP[r], lv=liveFor(r); const act=lv?lv.buses.length:activeTrips(pats,c).length;
   let first=null; for(const p of pats){for(const {t,off} of dayTrips(p,c)){const tm=t.start+off;if(tm>=c.from&&(!first||tm<first.tm))first={tm,p}}}
   if(!first&&c.live){const tk=addDays(c.key,1);for(const p of pats){for(const t of tripsOn(p,tk)){if(!first||t.start<first.tm-NEXT_DAY)first={tm:t.start+NEXT_DAY,p,tmrw:true}}}}
   let sub;
@@ -902,7 +907,7 @@ function linesResults(c){
   if(favs.length) h+=`<div class="eyebrow">${T('favourites')}</div><div class="list">${favs.map(r=>lineRow(r,c)).join('')}</div>`;
   h+=`<div class="eyebrow" data-sec="all">${T('allLines')}</div><div class="list">${day.map(r=>lineRow(r,c)).join('')||`<div class="empty">${T('noLines')}</div>`}</div>`;
   if(night.length) h+=`<div class="eyebrow">${T('night')}</div><div class="list">${night.map(r=>lineRow(r,c)).join('')}</div>`;
-  h+=`<p class="note">${T('footer',{from:longKey(dataKeys[0]),to:longKey(dataKeys[dataKeys.length-1])})}</p><p class="note" style="margin-top:6px">${T('version',{v:esc(BUILD)})}</p>`;
+  h+=`<p class="note">${T([...liveLines.values(),...liveStops.values()].some(fresh)?'footerLive':'footer',{from:longKey(dataKeys[0]),to:longKey(dataKeys[dataKeys.length-1])})}</p><p class="note" style="margin-top:6px">${T('version',{v:esc(BUILD)})}</p>`;
   return h;
 }
 
@@ -927,16 +932,21 @@ function lineView(v){
   if(variants.length>1){
     h+=`<div class="chips" role="group" aria-label="${T('variant')}">${variants.map((q,i)=>{const n=tripsOn(q,c.key).length;return `<button class="chip" data-pat="${q.id}" aria-pressed="${q.id===p.id}">${i===0?T('mainRoute'):esc(q.h)} · ${T('stopsN',{n:q.s.length})}${n?` · ${T('tripsN',{n})}`:''}</button>`}).join('')}</div>`;
   }
-  const act=activeTrips(dirPats,c);
+  const lv=liveFor(r);
+  /* live GPS buses on this direction, or else the timetable's estimate */
+  const lvOn=lv?lv.buses.map(b=>liveOn(b,p)).filter(Boolean):null;
+  const act=lv?[]:activeTrips(dirPats,c);
   const nTrips=tripsOn(p,c.key).length;
   if(c.live){
-    if(act.length) h+=`<div class="status"><span class="live"><span class="livedot"></span>${T('onRoad',{n:act.length})}</span> · ${T('estNote')}</div>`;
+    if(lv&&lvOn.length) h+=`<div class="status"><span class="live"><span class="livedot"></span>${T('onRoad',{n:lvOn.length})}</span> · ${T('liveGps')}</div>`;
+    else if(act.length) h+=`<div class="status"><span class="live"><span class="livedot"></span>${T('onRoad',{n:act.length})}</span> · ${T('estNote')}</div>`;
     else { const nx=departuresAt(p.s[0],c,q=>q.r===r&&q.d===v.d,{from:c.from})[0]; h+=`<div class="status">${T('noneRunning')}${nx?' '+T('nextLeaves',{stop:esc(S[p.s[0]].name),time:hhmm(nx.tm)+(nx.tmrw?` (${T('tomorrow')})`:'')}):''}</div>`; }
   } else h+=`<div class="status">${T('tripsOnDay',{day:prettyKey(c.key),n:nTrips})}</div>`;
 
   /* place buses on this pattern */
   const busAt={};
-  for(const a of act.concat(waitingTrips(dirPats,c))){
+  if(lv) lvOn.forEach(o=>(busAt[o.j]=busAt[o.j]||[]).push({f:o.f,live:true}));
+  else for(const a of act.concat(waitingTrips(dirPats,c))){
     const prev=a.p.s[a.k], next=a.p.s[a.k+1];
     let j=-1;
     for(let i=0;i<p.s.length-1;i++){if(p.s[i]===prev&&p.s[i+1]===next){j=i;break}}
@@ -971,7 +981,7 @@ function lineView(v){
       full=`<div class="full">${Object.keys(byH).sort((a,b)=>a-b).map(hh=>`<div class="hr"><b>${String(hh%24).padStart(2,'0')}</b><span>${byH[hh].map(d=>`<span class="${c.live&&d.tm<c.nowSec?'past':''}">${String(Math.floor(d.tm%3600/60)).padStart(2,'0')}${d.p.h!==p.h?`<i>*</i>`:''}</span>`).join(' ')}</span></div>`).join('')||`<div class="empty">${T('noBusesDay')}</div>`}${all.some(d=>d.p.h!==p.h)?`<div class="note" style="margin-top:6px">${T('otherTerminus')}</div>`:''}<button class="linkbtn" data-stop="${s}">${T('allDeps')}</button></div>`;
     }
     let buses='';
-    (busAt[i]||[]).forEach(a=>{buses+=`<span class="bus${a.wait?' parked':''}" style="top:calc(21px + ${(a.f*100).toFixed(1)}%)" title="${T('between',{a:esc(S[p.s[i]].name),b:esc(S[p.s[i+1]]?.name||'')})}">${BUS_SVG}</span>`});
+    (busAt[i]||[]).forEach(a=>{buses+=`<span class="bus${a.wait?' parked':''}${a.live?' live':''}" style="top:calc(21px + ${(a.f*100).toFixed(1)}%)" title="${T('between',{a:esc(S[p.s[i]].name),b:esc(S[p.s[i+1]]?.name||'')})}">${BUS_SVG}</span>`});
     h+=`<div class="stop ${off?'closed':''} ${i===0?'first':''} ${last?'last':''} ${v.hl===s?'hl':''} ${i===nearI?'near':''}" id="st-${i}"><span class="dot"></span>${buses}<button class="nm" data-open="${i}" aria-expanded="${open}"><b>${esc(S[s].name)}</b><span class="code">${esc(S[s].code)}</span>${i===nearI?`<span class="nearyou">${T('nearYou')}</span>`:''}</button>${xf?`<div class="xfer">${xf}</div>`:''}<div class="times">${times}</div>${full}</div>`;
   });
   h+=`</div><p class="note">${T('tapStop')}</p></div>`;
@@ -1004,7 +1014,14 @@ function stopView(v){
   let h=`<div class="dhead"><button class="back" data-back aria-label="${T('back')}">${BACK}</button><div class="main"><h2>${esc(s.name)}</h2><div class="sub">${T('stopCode',{code:esc(s.code)})} · ${c.live?T('nextDeps'):prettyKey(c.key)}</div></div><button class="ibtn share" data-share aria-label="${T('share')}">${SHARE}</button><button class="star ${on?'on':''}" data-fav-stop="${v.s}" aria-label="${T(on?'favRemove':'favAdd')}">★</button></div><div class="pad">${fallbackBanner(c)}${stopNotice(v.s,c)}`;
   h+=`<div class="xfer" style="gap:6px;margin:0 0 6px">${stopRoutes[v.s].map(r=>`<button data-line="${r}" data-hl="${v.s}">${badge(r)}</button>`).join('')}</div>`;
   h+=`<a class="linkbtn" href="https://maps.apple.com/?ll=${s.lat},${s.lon}&q=${encodeURIComponent(s.name)}" target="_blank" rel="noopener">${T('apple')}</a><a class="linkbtn" href="https://www.google.com/maps/search/?api=1&query=${s.lat},${s.lon}" target="_blank" rel="noopener">${T('google')}</a>`;
-  h+=`<div class="eyebrow">${T('departures')}</div><div class="list">`;
+  const la=liveArrivals(v.s);
+  if(la){
+    h+=`<div class="eyebrow"><span class="livedot"></span>${T('live')}</div><div class="list">`;
+    la.forEach(d=>{ const pp=patFor(d.r,d.h);
+      h+=`<button class="dep" data-line="${d.r}"${pp?` data-dirp="${pp.id}"`:''} data-hl="${v.s}">${badge(d.r)}<div class="main"><div class="hs">${esc(d.h||R[d.r].name)}${d.last?` <span class="lastbus">${T('lastBus')}</span>`:''}</div><div class="via">${d.m>0?T('away',{d:fmtDist(d.m)})+' · ':''}${T('busNo',{n:esc(d.bus)})}</div></div><div class="when ${d.sec<=600?'soon':''}">${liveWhen(d.sec)}</div></button>`; });
+    h+=`</div><p class="note">${T('liveNote')}</p>`;
+  }
+  h+=`<div class="eyebrow">${T(la?'scheduled':'departures')}</div><div class="list">`;
   if(!deps.length) h+=`<div class="empty">${T(c.live?'noDepToday':'noDepDay')}</div>`;
   let ruled=false;
   deps.forEach(d=>{
@@ -1073,7 +1090,7 @@ function initMap(){
   map.on('dragstart',()=>{ if(follow) setFollow(false); });
   map.on('zoomend',styleStops);
   busLayer=L.layerGroup().addTo(map); ringLayer=L.layerGroup().addTo(map);
-  map.on('popupopen',e=>{if(e.popup._stop!=null){popupStop=e.popup._stop;markSel()}});
+  map.on('popupopen',e=>{if(e.popup._stop!=null){popupStop=e.popup._stop;markSel();liveKick()}});
   map.on('popupclose',e=>{if(e.popup._stop!=null&&e.popup._stop===popupStop){popupStop=null;markSel()}});
   map.on('click',()=>{ if(st.panel&&!wide()&&st.full){st.full=false;render(true)} });
 }
@@ -1125,6 +1142,7 @@ function syncMap(){
     drawBuses();
   }
   markSel();
+  liveKick();
 }
 /* the stop whose pop-up is open wins; otherwise the stop open or highlighted in the panel */
 let popupStop=null;
@@ -1239,6 +1257,15 @@ function stopPopup(i){
   const c=ctx(); const deps=departuresAt(i,c,null,{from:c.from-30}).filter(d=>!stopClosed(i,d.p.r,addDays(c.key,d.tmrw?1:0))), lastM=lastTimes(departuresAt(i,c,null,{from:-1e9}));
   const groups=new Map();
   for(const d of deps){const k=d.p.r+'|'+d.p.h;if(!groups.has(k))groups.set(k,{r:d.p.r,h:d.p.h,pid:d.p.id,t:[]});const g=groups.get(k);if(g.t.length<3)g.t.push(d)}
+  const la=liveArrivals(i);
+  if(la){
+    /* live times, grouped by line and destination like the timetable */
+    const lg=new Map();
+    for(const d of la){const k=d.r+'|'+norm(d.h);if(!lg.has(k))lg.set(k,{r:d.r,h:d.h||R[d.r].name,t:[]});const g=lg.get(k);if(g.t.length<3)g.t.push(d)}
+    const lrows=[...lg.values()].map(g=>{const pp=patFor(g.r,g.h);return `<li><button class="pl" data-line="${g.r}"${pp?` data-dirp="${pp.id}"`:''} data-hl="${i}">${badge(g.r,'sm')}<span class="ph">${esc(g.h)}</span></button><span class="pt">${g.t.map(d=>(d.last?`<small class="lastbus">${T('lastBus')}</small> `:'')+liveWhen(d.sec)).join(' · ')}</span></li>`}).join('');
+    const lserved=stopRoutes[i].filter(r=>![...lg.values()].some(g=>g.r===r));
+    return `<div class="pop"><h4>${esc(S[i].name)}</h4><div class="code">${T('stopCode',{code:esc(S[i].code)})} · <span class="live"><span class="livedot"></span>${T('live')}</span></div>${stopNotice(i,c,true)}<ul>${lrows}</ul>${lserved.length?`<div class="code" style="margin-bottom:6px">${T('alsoStops')} ${lserved.map(r=>badge(r,'sm')).join(' ')}</div>`:''}<button data-stop="${i}">${T('fullTT')}</button></div>`;
+  }
   const served=stopRoutes[i].filter(r=>!stopClosed(i,r,c.key)&&![...groups.values()].some(g=>g.r===r));
   const rows=[...groups.values()].sort((a,b)=>a.t[0].tm-b.t[0].tm).map(g=>`<li><button class="pl" data-line="${g.r}" data-dirp="${g.pid}" data-hl="${i}">${badge(g.r,'sm')}<span class="ph">${esc(g.h)}</span></button><span class="pt">${g.t.map((d,n)=>{const tm=d.tm,df=tm-c.nowSec;const tag=(d.tmrw&&!(n>0&&g.t[n-1].tmrw)?`<small class="tmrw">${T('tomorrow')}</small> `:'')+(isLast(d,lastM)?`<small class="lastbus">${T('lastBus')}</small> `:'');return tag+(n===0&&c.live&&df<60?T('due'):n===0&&c.live&&df<=1200?T('min',{n:Math.floor(df/60)}):hhmm(tm))}).join(' · ')}</span></li>`).join('');
   return `<div class="pop"><h4>${esc(S[i].name)}</h4><div class="code">${T('stopCode',{code:esc(S[i].code)})} · ${c.live?T('nextBuses'):prettyKey(c.key)}</div>${stopNotice(i,c,true)}<ul>${rows||`<li>${T(c.live?'noMoreToday':'noBusesDay')}</li>`}</ul>${served.length?`<div class="code" style="margin-bottom:6px">${T('alsoStops')} ${served.map(r=>badge(r,'sm')).join(' ')}</div>`:''}<button data-stop="${i}">${T('fullTT')}</button></div>`;
@@ -1337,7 +1364,11 @@ function drawBuses(){
   if(!map) return;
   const c=ctx(); const seen=new Set();
   if(c.live){
-    const sel=selection(); const shown=shownLines(); const pats=P.filter(p=>shown.has(p.r)||p.r===sel.r);
+    const sel=selection(); const shown=shownLines();
+    /* lines with live GPS show the real buses; the rest keep the timetable estimate */
+    const liveR=new Set([...shown,sel.r].filter(r=>r>=0&&liveFor(r)));
+    for(const r of liveR) drawLiveBuses(r,seen);
+    const pats=P.filter(p=>(shown.has(p.r)||p.r===sel.r)&&!liveR.has(p.r));
     for(const a of activeTrips(pats,c).concat(waitingTrips(pats,c))){
       const id=a.p.id+':'+a.t.start+':'+a.off; seen.add(id);
       const d=a.p.dist[a.k]+(a.p.dist[a.k+1]-a.p.dist[a.k])*a.f;
@@ -1365,8 +1396,188 @@ function drawBuses(){
       }
     }
   }
-  for(const [id,m] of busMarkers){ if(!seen.has(id)){ busLayer.removeLayer(m); busMarkers.delete(id); } }
+  for(const [id,m] of busMarkers){ if(!seen.has(id)){ cancelAnimationFrame(m._glide); busLayer.removeLayer(m); busMarkers.delete(id); } }
 }
+
+/* ---------- live data ----------
+   Real bus positions and arrival times from the city's bus tracking (the data behind its Bonobur app).
+   The city's server only lets its own site read it, so it's fetched through this site's relay, a small
+   Cloudflare Worker. It's only used for today, and only while it's fresh: if the relay or the city's
+   server stops answering, everything quietly goes back to the timetable estimates. */
+const LIVE_API='https://burgos-bus-api.filiplung.workers.dev/estadobus/';
+const LIVE_STALE=45000;            /* older than this and the live data is dropped */
+const LINE_ALIAS={'73':'19'};       /* the tracking's internal line 73 = special trips of line 19 */
+const liveLines=new Map();          /* line index -> {at, buses:[{id,r,ruta,lat,lon,pl}]} */
+const liveStops=new Map();          /* stop index -> {at, rows:[{r,h,sec,m,last,bus}]} */
+const liveBusy=new Set();
+async function liveGet(path){
+  if(liveBusy.has(path)) return null; liveBusy.add(path);
+  const ctl=typeof AbortController!=='undefined'?new AbortController():null, tm=setTimeout(()=>ctl&&ctl.abort(),8000);
+  try{ const r=await fetch(LIVE_API+path,{cache:'no-store',signal:ctl?ctl.signal:undefined}); if(!r.ok) return null;
+    const j=await r.json(); return Array.isArray(j)?j:null; }
+  catch(e){ return null; }
+  finally{ clearTimeout(tm); liveBusy.delete(path); }
+}
+const fresh=e=>!!e&&Date.now()-e.at<LIVE_STALE;
+function liveFor(r){ if(!ctx().live) return null; const e=liveLines.get(r); return fresh(e)?e:null; }
+const lineOfCode=code=>lineByCode(LINE_ALIAS[code]||code);
+const stopNum=i=>parseInt(S[i].code.replace(/\D/g,''),10);
+const fmtDist=m=>m>=1000?(m/1000).toLocaleString(I18N[lang].loc,{maximumFractionDigits:1})+' km':Math.round(m/10)*10+' m';
+
+/* nearest point of a route shape to a GPS fix: how far along the shape (d) and how far off it (m, metres) */
+function snapTo(sh,lat,lon){
+  const {pts,cum}=SH[sh], kx=111320*Math.cos(lat*Math.PI/180), ky=111320; let best={d:0,m:1e9};
+  for(let i=0;i<pts.length-1;i++){
+    const ax=(pts[i][1]-lon)*kx, ay=(pts[i][0]-lat)*ky, dx=(pts[i+1][1]-pts[i][1])*kx, dy=(pts[i+1][0]-pts[i][0])*ky, l2=dx*dx+dy*dy;
+    const f=l2?Math.max(0,Math.min(1,-(ax*dx+ay*dy)/l2)):0, m=Math.hypot(ax+dx*f,ay+dy*f);
+    if(m<best.m) best={d:cum[i]+(cum[i+1]-cum[i])*f,m};
+  }
+  return best;
+}
+const bearing=(a,b)=>(Math.atan2((b.lon-a.lon)*Math.cos(a.lat*Math.PI/180),b.lat-a.lat)*180/Math.PI+360)%360;
+const angDiff=(a,b)=>Math.abs(((a-b)%360+540)%360-180);
+/* Which of the line's routes (direction and variant) a bus is on. The tracking gives its own route
+   number, which doesn't match the timetable's, so the bus is matched by where it is and which way it
+   has been moving. Each tracking route number then learns which timetable route it matches. */
+const busTrack=new Map(), rutaVotes=new Map();
+function placeLive(b){
+  const key=b.r+'|'+b.id, prev=busTrack.get(key);
+  const moved=prev&&distM(prev.lat,prev.lon,b.lat,b.lon)>15?bearing(prev,b):null;
+  const votes=rutaVotes.get(b.r+'|'+b.ruta)||new Map(), snaps=new Map(), key0=ctx().key;
+  let best=null;
+  for(const p of routeP[b.r]){
+    if(!snaps.has(p.sh)) snaps.set(p.sh,snapTo(p.sh,b.lat,b.lon));
+    const s=snaps.get(p.sh); if(s.m>400) continue;
+    /* where routes share the street, the busiest one (the main route) is the likelier */
+    let score=s.m-Math.min(15,tripsOn(p,key0).length/3);
+    if(moved!=null){ const h=headingAt(p.sh,s.d); if(h!=null){ const df=angDiff(h,moved); score+=df>100?300:df>60?80:0; } }
+    score-=Math.min(60,(votes.get(p.id)||0)*6);
+    if(prev&&prev.pid===p.id) score-=20;
+    if(!best||score<best.score) best={p,d:s.d,m:s.m,score};
+  }
+  if(best&&moved!=null){ votes.set(best.p.id,(votes.get(best.p.id)||0)+1); rutaVotes.set(b.r+'|'+b.ruta,votes); }
+  let hd=moved;
+  if(best){ const h=headingAt(best.p.sh,best.d); if(h!=null&&(moved==null||angDiff(h,moved)<60)) hd=h; }
+  if(hd==null&&prev) hd=prev.hd;
+  busTrack.set(key,{lat:b.lat,lon:b.lon,hd,pid:best?best.p.id:null});
+  return {p:best?best.p:null,d:best?best.d:0,hd};
+}
+/* where a live bus sits on route p: between stops j and j+1, fraction f; null when it isn't on it */
+function liveOn(b,p){
+  if(b.pl.p&&b.pl.p.d!==p.d) return null;
+  const s=b.pl.p&&b.pl.p.sh===p.sh?{d:b.pl.d,m:0}:snapTo(p.sh,b.lat,b.lon); if(s.m>400) return null;
+  let j=0; while(j<p.s.length-2&&p.dist[j+1]<=s.d) j++;
+  const span=p.dist[j+1]-p.dist[j];
+  return {j,f:span>0?Math.max(0,Math.min(1,(s.d-p.dist[j])/span)):0};
+}
+
+/* live arrivals at stop i, counted down from when they were fetched; null when there are none */
+function liveArrivals(i){
+  if(!ctx().live) return null; const e=liveStops.get(i); if(!fresh(e)) return null;
+  const el=(Date.now()-e.at)/1000;
+  const rows=e.rows.map(x=>Object.assign({},x,{sec:x.sec-el})).filter(x=>x.sec>-30).sort((a,b)=>a.sec-b.sec);
+  return rows.length?rows:null;
+}
+/* the timetable route a live arrival belongs to, by its destination, so tapping it opens that direction */
+function patFor(r,h){ const n=norm(h); return routeP[r].find(p=>norm(p.h)===n)||routeP[r].find(p=>norm(p.h).includes(n)||n.includes(norm(p.h)))||null; }
+const liveWhen=sec=>sec<60?T('due'):T('min',{n:Math.floor(sec/60)});
+
+function drawLiveBuses(r,seen){
+  const e=liveFor(r), x=R[r];
+  for(const b of e.buses){
+    const id='live:'+r+':'+b.id; seen.add(id);
+    let m=busMarkers.get(id);
+    if(!m){
+      const icon=L.divIcon({className:'vehwrap',html:`<div class="veh" style="--c:${x.col};--t:${x.txt}"><span class="hit"></span><div class="rot"><span class="arrow"></span>${BUS_TOP}</div><span class="num">${esc(x.n)}</span><span class="lv"></span></div>`,iconSize:[60,60],iconAnchor:[30,30]});
+      m=L.marker([b.lat,b.lon],{icon,keyboard:false,title:T('busTitle',{n:x.n,dest:b.pl.p?b.pl.p.h:x.name}),zIndexOffset:550}).addTo(busLayer);
+      m.bindPopup(()=>{m._ph=livePopup(id);return m._ph},{maxWidth:280,minWidth:220,autoPanPaddingTopLeft:popPad()});
+      busMarkers.set(id,m); m._at=e.at;
+    } else if(m._at!==e.at){
+      /* glide to the new fix instead of jumping */
+      m._at=e.at; cancelAnimationFrame(m._glide);
+      const from=m.getLatLng(), t0=performance.now(), D=reduceMotion?0:1500;
+      const step=now=>{ const f=D?Math.min(1,(now-t0)/D):1, k=1-Math.pow(1-f,3);
+        m.setLatLng([from.lat+(b.lat-from.lat)*k, from.lng+(b.lon-from.lng)*k]); if(f<1) m._glide=requestAnimationFrame(step); };
+      m._glide=requestAnimationFrame(step);
+    }
+    m._live={b,at:e.at};
+    if(m.isPopupOpen()){ const h=livePopup(id); if(h!==m._ph){ m._ph=h; const box=m.getPopup().getElement(), dyn=box&&box.querySelector('.dyn');
+      if(dyn){ const tmp=document.createElement('div'); tmp.innerHTML=h; dyn.innerHTML=tmp.querySelector('.dyn').innerHTML; } else m.getPopup().setContent(h); } }
+    const el=m.getElement(), dir=el&&el.querySelector('.rot');
+    if(dir){
+      const hd=b.pl.hd;
+      if(hd==null) dir.querySelector('.arrow').style.visibility='hidden';
+      else { const prev=m._hd??hd, next=prev+(((hd-prev)%360+540)%360-180); m._hd=next; dir.querySelector('.arrow').style.visibility=''; dir.style.transform=`rotate(${next}deg)`; }
+    }
+  }
+}
+function livePopup(id){
+  const m=busMarkers.get(id); if(!m||!m._live) return '';
+  const {b,at}=m._live, x=R[b.r], p=b.pl.p, ago=Math.max(0,Math.round((Date.now()-at)/1000));
+  let mid='';
+  if(p){
+    let k=0; while(k<p.s.length-1&&p.dist[k+1]<=b.pl.d+15) k++;
+    const last=p.s.length-1, atStop=Math.abs(p.dist[k]-b.pl.d)<=30, nxt=Math.min(k+1,last);
+    const line1=atStop||k===last?T('atStop',{stop:esc(S[p.s[k]].name)}):T('headingTo',{stop:esc(S[p.s[nxt]].name)});
+    const ups=[]; for(let q=(atStop?k:nxt)+1;q<=last&&ups.length<3;q++) ups.push(q);
+    mid=`<div class="bline">${line1}</div><div class="code">${T('progress',{k:(atStop?k:nxt)+1,n:p.s.length})}</div>
+<div class="bar"><span style="width:${(100*(atStop?k:nxt)/Math.max(1,last)).toFixed(1)}%"></span></div>
+${ups.length?`<div class="code" style="margin-top:8px">${T('upcoming')}</div><ul>${ups.map(q=>`<li><span class="ph">${esc(S[p.s[q]].name)}</span></li>`).join('')}</ul>`:''}`;
+  }
+  return `<div class="pop busdet"><div class="dyn">
+<h4><span class="badge sm" style="background:${x.col};color:${x.txt}">${esc(x.n)}</span> → ${esc(p?p.h:x.name)}</h4>
+<div class="bstat move"><span class="sdot"></span><b>${T('live')}</b> · ${T('busNo',{n:esc(b.id)})}</div>
+${mid}<div class="code" style="margin:6px 0">${T('busLive',{s:ago})}</div></div>
+${p?`<button data-line="${b.r}" data-dirp="${p.id}" data-keepdir>${T('openLine')}</button>`:`<button data-line="${b.r}">${T('openLine')}</button>`}</div>`;
+}
+
+/* What to fetch: buses for the lines on the map (and the one open), arrival times for the stop that is
+   open in the panel or in a pop-up. Every 10 s, or 20 s when many lines are on, and right away when
+   something new is opened. */
+function liveWanted(){
+  const sel=selection(), lines=new Set(shownLines()); if(sel.r>=0) lines.add(sel.r);
+  const stops=new Set(); const top=st.stack[st.stack.length-1];
+  if(st.panel&&top&&top.kind==='stop') stops.add(top.s);
+  if(popupStop!=null) stops.add(popupStop);
+  return {lines,stops};
+}
+async function pollLine(r){
+  const codes=[R[r].n,...Object.keys(LINE_ALIAS).filter(k=>LINE_ALIAS[k]===R[r].n)];
+  const res=await Promise.all(codes.map(code=>liveGet('obtenervehiculosenlinea/'+encodeURIComponent(code))));
+  if(res[0]==null) return false;
+  const buses=[];
+  res.forEach(list=>(list||[]).forEach(v=>{ const lat=+v.lat, lon=+v.lng;
+    if(isFinite(lat)&&isFinite(lon)&&Math.abs(lat-42.34)<0.3&&Math.abs(lon+3.7)<0.3) buses.push({id:v.vehiculo,r,ruta:v.ruta,lat,lon}); }));
+  buses.forEach(b=>{b.pl=placeLive(b)});
+  liveLines.set(r,{at:Date.now(),buses}); return true;
+}
+async function pollStop(i){
+  const res=await liveGet('ObtenerTiemposRutaPorParada/'+stopNum(i)); if(res==null) return false;
+  const rows=[];
+  for(const g of res){ if(!g||g.header===true) continue; const r=lineOfCode(String(g.line||'').trim()); if(r<0) continue;
+    for(const e of g.publicEstimationVHExts||[]){ const sec=+e.seconds; if(!isFinite(sec)) continue;
+      rows.push({r,h:String(e.destination||g.destination||''),sec,m:+e.meters||0,last:!!e.isLastBus,bus:e.vehicle}); } }
+  liveStops.set(i,{at:Date.now(),rows}); return true;
+}
+let liveTimer=0; const lastPoll=new Map();
+async function livePoll(onlyNew){
+  clearTimeout(liveTimer);
+  if(document.hidden||!ctx().live){ liveTimer=setTimeout(()=>livePoll(),10000); return; }
+  const {lines,stops}=liveWanted(), now=Date.now();
+  const due=k=>!onlyNew||!(now-(lastPoll.get(k)||0)<8000);
+  const jobs=[];
+  for(const r of lines) if(due('l'+r)){ lastPoll.set('l'+r,now); jobs.push(pollLine(r)); }
+  for(const i of stops) if(due('s'+i)){ lastPoll.set('s'+i,now); jobs.push(pollStop(i)); }
+  if(jobs.length){
+    const ok=(await Promise.all(jobs)).some(Boolean);
+    if(ok){ drawBuses(); refreshStopPopup();
+      const top=st.stack[st.stack.length-1], a=document.activeElement;
+      if(st.panel&&top&&!(a&&a.tagName==='INPUT')) render(true); }
+  }
+  liveTimer=setTimeout(()=>livePoll(),lines.size>8?20000:10000);
+}
+let kickTimer=0;
+function liveKick(){ clearTimeout(kickTimer); kickTimer=setTimeout(()=>livePoll(true),250); }
 
 /* ---------- day picker & clock ---------- */
 function buildDays(){
@@ -1531,6 +1742,8 @@ async function checkUpdate(){
   }catch(e){}
 }
 setTimeout(checkUpdate,1500);
+livePoll(true);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)liveKick()});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkUpdate()});
 setInterval(checkUpdate,5*60*1000);
 $('#q-lang').addEventListener('input',langList);
