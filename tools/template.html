@@ -234,7 +234,8 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .lvrow{font-size:.74rem;line-height:1.35;color:var(--muted);margin:3px 0 7px;font-variant-numeric:tabular-nums}
 .lvrow b{color:var(--live);font-weight:600}
 .wifi{width:13px;height:13px;color:var(--live);overflow:visible;vertical-align:-2px;margin-right:4px}
-.wifi.old{color:var(--muted)}.lvrow.old b{color:var(--muted)}
+.wifi .w{transition:opacity .4s}.wifi.b2 .w2,.wifi.b1 .w2,.wifi.b1 .w1,.wifi.b0 .w1,.wifi.b0 .w2{opacity:.2}
+.wifi.b0{color:var(--muted)}.lvrow.old b{color:var(--muted)}
 /* while the bus's position is being fetched, the signal runs out through the waves: dot, then each arc */
 .wifi.busy .w{animation:wave .9s ease-out infinite backwards}
 .wifi.busy .w1{animation-delay:.18s}.wifi.busy .w2{animation-delay:.36s}
@@ -1162,7 +1163,11 @@ function initMap(){
   map.on('dragstart',()=>{ if(follow) setFollow(false); });
   map.on('zoomend',styleStops);
   busLayer=L.layerGroup().addTo(map); ringLayer=L.layerGroup().addTo(map);
-  map.on('zoomstart',()=>{zooming=true}); map.on('zoomend',()=>{zooming=false;startGlide()});
+  map.on('zoomstart',()=>{zooming=true}); map.on('zoomend',()=>{zooming=false;if(busFollow)busFollow.cp=null;startGlide()});
+  /* touching the map (a drag, a pinch, a scroll-wheel) stops following the open bus */
+  map.on('dragstart',stopFollowBus);
+  map.getContainer().addEventListener('pointerdown',e=>{ if(!e.target.closest('.leaflet-popup,.vehwrap,.leaflet-control')) stopFollowBus(); },{passive:true});
+  map.getContainer().addEventListener('wheel',stopFollowBus,{passive:true});
   map.on('popupopen',e=>{if(e.popup._stop!=null){popupStop=e.popup._stop;markSel();liveKick()}});
   map.on('popupclose',e=>{if(e.popup._stop!=null&&e.popup._stop===popupStop){popupStop=null;markSel()}});
   map.on('click',()=>{ if(st.panel&&!wide()&&st.full){st.full=false;render(true)} });
@@ -1441,7 +1446,7 @@ function drawBuses(){
       if(!m){
         const icon=L.divIcon({className:'vehwrap',html:`<div class="veh" style="--c:${x.col};--t:${x.txt}"><span class="hit"></span><div class="rot"><span class="arrow"></span>${BUS_TOP}</div><span class="num">${esc(x.n)}</span></div>`,iconSize:[60,60],iconAnchor:[30,30]});
         m=L.marker(ll,{icon,keyboard:false,title:T('busTitle',{n:x.n,dest:a.p.h}),zIndexOffset:500}).addTo(busLayer);
-        m.bindPopup(()=>{m._ph=busPopup(id);return m._ph},{maxWidth:280,minWidth:220,autoPanPaddingTopLeft:popPad()});
+        m.bindPopup(()=>{m._ph=busPopup(id);return m._ph},{maxWidth:280,minWidth:220,autoPanPaddingTopLeft:popPad()}); followOnOpen(m);
         busMarkers.set(id,m);
       }
       glideTo(m,{sh:a.p.sh,d,hd},1100);
@@ -1555,7 +1560,7 @@ function drawLiveBuses(r,seen){
     if(!m){
       const icon=L.divIcon({className:'vehwrap',html:`<div class="veh live" style="--c:${x.col};--t:${x.txt}"><span class="hit"></span><div class="rot"><span class="arrow"></span>${BUS_TOP}</div><span class="num">${esc(x.n)}</span></div>`,iconSize:[60,60],iconAnchor:[30,30]});
       m=L.marker([b.lat,b.lon],{icon,keyboard:false,title:T('busTitle',{n:x.n,dest:b.pl.p?b.pl.p.h:x.name}),zIndexOffset:550}).addTo(busLayer);
-      m.bindPopup(()=>{m._ph=livePopup(id);return m._ph},{maxWidth:280,minWidth:220,autoPanPaddingTopLeft:popPad()});
+      m.bindPopup(()=>{m._ph=livePopup(id);return m._ph},{maxWidth:280,minWidth:220,autoPanPaddingTopLeft:popPad()}); followOnOpen(m);
       m.on('popupopen',()=>liveBadge(m));
       busMarkers.set(id,m); m._at=e.at; m._fix=[b.lat,b.lon]; m._moved=performance.now(); m._gap=pollEvery(shownLines().size);
       glideTo(m,liveTarget(b),0);
@@ -1585,6 +1590,28 @@ const liveTarget=b=>b.pl.p&&b.pl.m<=40?{sh:b.pl.p.sh,d:b.pl.d,hd:b.pl.hd}:{ll:[b
    route line when it has one (so it turns corners with the street) and in a straight line otherwise.
    One animation loop moves them all and stops when nothing is moving. */
 let glideFrame=0, glideLast=0, zooming=false;
+/* Following an open bus. Leaflet's own pop-up auto-pan re-centred the map on every frame of the glide
+   and cancelled the pan in progress each time, so the map fought your finger. Now the pop-up only pans
+   into view when it opens; after that the map moves with the bus, by exactly as much as the bus moved,
+   until you touch the map, and then it stays where you put it. Open the bus again to follow it again. */
+let busFollow=null;   /* {m, cp: where on screen the bus is kept} */
+function followOnOpen(m){
+  m.on('popupopen',e=>{ e.popup.options.autoPan=false; busFollow={m,cp:null}; });
+  m.on('popupclose',e=>{ e.popup.options.autoPan=true; if(busFollow&&busFollow.m===m) busFollow=null; });
+}
+const stopFollowBus=()=>{ busFollow=null; };
+let followEnd=0;
+function followStep(m,ll){
+  if(!busFollow||busFollow.m!==m||zooming) return;
+  const cp=map.latLngToContainerPoint(ll);
+  /* while the opening pan is still running, just note where the bus ends up on screen */
+  if(!busFollow.cp||map._panAnim&&map._panAnim._inProgress){ busFollow.cp=cp; return; }
+  const dx=cp.x-busFollow.cp.x, dy=cp.y-busFollow.cp.y; if(Math.abs(dx)<.5&&Math.abs(dy)<.5) return;
+  /* move the map without Leaflet's full 'moveend' on every frame (tiles and stops redraw on that),
+     then send one when the bus settles */
+  map._rawPanBy(L.point(Math.round(dx),Math.round(dy))); map.fire('move');
+  clearTimeout(followEnd); followEnd=setTimeout(()=>map.fire('moveend'),250);
+}
 function glidePos(g,now){
   const f=g.dur>0?Math.min(1,Math.max(0,(now-g.t0)/g.dur)):1;
   if(g.sh!=null){ const d=g.d0+(g.d1-g.d0)*f; return {ll:pointAlong(g.sh,d),d}; }
@@ -1628,7 +1655,7 @@ function glideLoop(now){
   const dt=glideLast?Math.min(100,now-glideLast):16; glideLast=now; let busy=zooming;
   if(!zooming) for(const m of busMarkers.values()){
     const g=m._g; if(!g||g.done) continue;
-    const p=glidePos(g,now); m.setLatLng(p.ll);
+    const p=glidePos(g,now); m.setLatLng(p.ll); followStep(m,p.ll);
     const want=g.sh!=null?headingAt(g.sh,p.d)??g.hd:g.hd;
     turnBus(m,want,dt);
     const settled=m._hd==null||want==null||Math.abs(((want-m._hd)%360+540)%360-180)<1;
@@ -1648,11 +1675,14 @@ const liveSyncing=new Map();
 /* the open live pop-up's small print: how old the position is, and the signal animating while it updates */
 function liveBadge(m){
   const box=m.isPopupOpen()&&m.getPopup().getElement(); if(!box||!m._live) return;
-  const row=box.querySelector('.lvrow'), ago=box.querySelector('.ago'), w=box.querySelector('.wifi'); if(!row) return;
-  const s=Math.max(0,Math.round((Date.now()-m._live.at)/1000)), old=s>20;
-  /* the second half of 'Live GPS position · updated {s} s ago', in whatever language is on */
-  const txt=T('busLive',{s}).split(' · ').pop(); if(ago.textContent!==txt) ago.textContent=txt;
-  row.classList.toggle('old',old); w.classList.toggle('old',old); w.classList.toggle('busy',liveSyncing.has(m._live.b.r));
+  const row=box.querySelector('.lvrow'), w=box.querySelector('.wifi'); if(!row) return;
+  /* how fresh the position is shows as signal strength, like a phone's: all three waves when it
+     updated in the last 12 s, two up to 25 s, just the dot up to 40 s, then grey. The exact age is
+     in the tooltip ('updated {s} s ago', the second half of busLive, in whatever language is on). */
+  const s=Math.max(0,Math.round((Date.now()-m._live.at)/1000)), bars=s<12?3:s<25?2:s<40?1:0;
+  const txt=T('busLive',{s}).split(' · ').pop(); if(row.title!==txt){ row.title=txt; row.setAttribute('aria-label',T('live')+' · '+txt); }
+  w.setAttribute('class','wifi b'+bars+(liveSyncing.has(m._live.b.r)?' busy':''));
+  row.classList.toggle('old',!bars);
 }
 const liveBadges=()=>{ for(const m of busMarkers.values()) if(m._live) liveBadge(m); };
 function livePopup(id){
@@ -1671,7 +1701,7 @@ ${ups.length?`<div class="code" style="margin-top:8px">${T('upcoming')}</div><ul
   /* the age and the signal animation are filled in by liveBadge, so the pop-up isn't rebuilt every second */
   return `<div class="pop busdet"><div class="dyn">
 <h4><span class="badge sm" style="background:${x.col};color:${x.txt}">${esc(x.n)}</span> → ${esc(p?p.h:x.name)}</h4>
-<div class="lvrow">${WIFI}<b>${T('live')}</b> · ${T('busNo',{n:esc(b.id)})} · <span class="ago"></span></div>
+<div class="lvrow">${WIFI}<b>${T('live')}</b></div>
 ${mid}</div>
 ${p?`<button data-line="${b.r}" data-dirp="${p.id}" data-keepdir>${T('openLine')}</button>`:`<button data-line="${b.r}">${T('openLine')}</button>`}</div>`;
 }
@@ -1720,7 +1750,11 @@ async function livePoll(onlyNew){
   clearTimeout(liveTimer);
   if(document.hidden||!ctx().live){ liveTimer=setTimeout(()=>livePoll(),10000); return; }
   const {lines,stops}=liveWanted(), now=Date.now();
-  const due=k=>!onlyNew||!(now-(lastPoll.get(k)||0)<4000);
+  /* the line you're looking at, the bus you've opened and the stops open update every 5 s; the
+     other lines on the map every pollEvery() */
+  const sel0=selection().r, popR0=[...busMarkers.values()].filter(m=>m._live&&m.isPopupOpen()).map(m=>'l'+m._live.b.r);
+  const fast=new Set(['l'+sel0,...popR0,...[...stops].map(i=>'s'+i)]), slow=pollEvery(lines.size);
+  const due=k=>{ const ago=now-(lastPoll.get(k)||0); return onlyNew?ago>=4000:ago>=(fast.has(k)?5000:slow)-500; };
   /* Asking for every line at the same moment (29 with the whole network on) made the city's server
      drop some of them, so the fetches go a few at a time: the open line and the bus pop-up's line first,
      then the open stops, then the rest. */
@@ -1738,7 +1772,7 @@ async function livePoll(onlyNew){
       const top=st.stack[st.stack.length-1], a=document.activeElement;
       if(st.panel&&top&&!(a&&a.tagName==='INPUT')) render(true); }
   }
-  liveTimer=setTimeout(()=>livePoll(),pollEvery(lines.size));
+  liveTimer=setTimeout(()=>livePoll(),5000);
 }
 let kickTimer=0;
 function liveKick(){ clearTimeout(kickTimer); kickTimer=setTimeout(()=>livePoll(true),250); }
