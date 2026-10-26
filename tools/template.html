@@ -875,10 +875,13 @@ const rubber=(o,dim,c=.55)=>(o*dim*c)/(dim+c*Math.abs(o));  /* resistance past t
   };
   bar.addEventListener('pointerup',end); bar.addEventListener('pointercancel',end);
 })();
+/* Past the end of the published timetable the same weekday's times from its last week are shown.
+   The banner saying so is switched off (the owner's choice); the footer of the lines list still gives
+   the dates the timetable covers. Return the banner below again to bring it back. */
 function fallbackBanner(c){
-  const r=resolveKey(c.key);
-  if(!r.fb) return '';
-  return `<div class="banner">${T('banner',{from:longKey(dataKeys[0]),to:longKey(dataKeys[dataKeys.length-1]),day:prettyKey(c.key),wday:wdayLong(r.key),date:longKey(r.key)})}</div>`;
+  return '';
+  /* const r=resolveKey(c.key); if(!r.fb) return '';
+  return `<div class="banner">${T('banner',{from:longKey(dataKeys[0]),to:longKey(dataKeys[dataKeys.length-1]),day:prettyKey(c.key),wday:wdayLong(r.key),date:longKey(r.key)})}</div>`; */
 }
 
 function tempStops(key){
