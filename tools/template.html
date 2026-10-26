@@ -1466,7 +1466,7 @@ function drawBuses(){
    The city's server only lets its own site read it, so it's fetched through this site's relay, a small
    Cloudflare Worker. It's only used for today, and only while it's fresh: if the relay or the city's
    server stops answering, everything quietly goes back to the timetable estimates. */
-const LIVE_API='https://burgos-bus-api.filiplung.workers.dev/estadobus/';
+const LIVE_ROOT='https://burgos-bus-api.filiplung.workers.dev/', LIVE_API=LIVE_ROOT+'estadobus/';
 const LIVE_STALE=45000;            /* older than this and the live data is dropped */
 const liveLines=new Map();          /* line index -> {at, buses:[{id,r,ruta,lat,lon,pl}]} */
 const liveStops=new Map();          /* stop index -> {at, rows:[{r,h,sec,m,last,bus}]} */
@@ -1721,21 +1721,49 @@ function liveWanted(){
     if(p) p.s.forEach(x=>{ const a=adds.get(x); if(a) a.before.concat(a.after).forEach(i=>stops.add(i)); }); }
   return {lines,stops};
 }
+/* the signal animation in a bus pop-up runs while its line is being fetched, and at least one full
+   wave (0.9 s) however quick the answer */
+function syncStart(rs){ const t0=Date.now(); rs.forEach(r=>liveSyncing.set(r,t0)); liveBadges(); return t0; }
+function syncEnd(rs,t0){ setTimeout(()=>{ let ch=false; rs.forEach(r=>{ if(liveSyncing.get(r)===t0){ liveSyncing.delete(r); ch=true; } }); if(ch) liveBadges(); },Math.max(0,900-(Date.now()-t0))); }
 async function pollLine(r){
-  const t0=Date.now(); liveSyncing.set(r,t0); liveBadges();
+  const t0=syncStart([r]);
   const res=await liveGet('obtenervehiculosenlinea/'+encodeURIComponent(R[r].n));
-  /* the signal animation runs at least one full wave (0.9 s), however quick the answer */
-  setTimeout(()=>{ if(liveSyncing.get(r)===t0){ liveSyncing.delete(r); liveBadges(); } },Math.max(0,900-(Date.now()-t0)));
-  if(res==null) return false;
+  syncEnd([r],t0);
+  return res!=null&&applyLine(r,res.j,res.at);
+}
+/* Several lines in one request: the relay fetches them from the city a few at a time and shares
+   answers between everyone using the site. One request per round instead of one per line keeps the
+   relay well inside Cloudflare's free daily allowance. If the relay doesn't know /batch yet (an older
+   copy deployed), lines are fetched one by one as before. */
+let batchOK=true;
+async function pollLines(rs){
+  const t0=syncStart(rs), url=LIVE_ROOT+'batch/lines/'+rs.map(r=>R[r].n).join('_');
+  let res=null;
+  for(let a=0;a<2&&res==null;a++){
+    if(a) await new Promise(ok=>setTimeout(ok,1500));
+    const ctl=typeof AbortController!=='undefined'?new AbortController():null, tm=setTimeout(()=>ctl&&ctl.abort(),12000);
+    try{ const r=await fetch(url,{cache:'no-store',signal:ctl?ctl.signal:undefined});
+      if(r.status===404){ batchOK=false; break; }
+      if(r.ok){ const j=await r.json(); if(j&&j.lines&&typeof j.lines==='object') res=j.lines; } }
+    catch(e){}
+    finally{ clearTimeout(tm); }
+  }
+  syncEnd(rs,t0);
+  if(res==null){ if(!batchOK) return (await Promise.all(rs.map(pollLine))).some(Boolean); return false; }
+  let ok=false;
+  for(const r of rs){ const x=res[R[r].n]; if(x&&Array.isArray(x.data)&&applyLine(r,x.data,Date.now()-Math.max(0,Math.min(60,+x.age||0))*1000)) ok=true; }
+  return ok;
+}
+function applyLine(r,list,at){
   const buses=[];
-  res.j.forEach(v=>{ const lat=+v.lat, lon=+v.lng;
+  list.forEach(v=>{ const lat=+v.lat, lon=+v.lng;
     if(isFinite(lat)&&isFinite(lon)&&Math.abs(lat-42.34)<0.3&&Math.abs(lon+3.7)<0.3) buses.push({id:v.vehiculo,r,ruta:v.ruta,lat,lon}); });
   /* a sudden empty list while buses were showing moments ago is usually a glitch at the city's end:
      the buses already shown stay until a list with buses arrives or they go stale */
   const prev=liveLines.get(r);
   if(!buses.length&&fresh(prev)&&prev.buses.length) return false;
   buses.forEach(b=>{b.pl=placeLive(b)});
-  liveLines.set(r,{at:res.at,buses}); return true;
+  liveLines.set(r,{at,buses}); return true;
 }
 async function pollStop(i){
   const res=await liveGet('ObtenerTiemposRutaPorParada/'+stopNum(i)); if(res==null) return false;
@@ -1760,10 +1788,13 @@ async function livePoll(onlyNew){
      then the open stops, then the rest. */
   const sel=selection().r, popR=[...busMarkers.values()].filter(m=>m._live&&m.isPopupOpen()).map(m=>m._live.b.r);
   const order=[...lines].sort((a,b)=>((b===sel)+popR.includes(b)*2)-((a===sel)+popR.includes(a)*2));
-  const jobs=[];
-  for(const r of order.slice(0,2)) if(due('l'+r)){ lastPoll.set('l'+r,now); jobs.push(()=>pollLine(r)); }
+  const jobs=[], dueLines=order.filter(r=>due('l'+r));
+  dueLines.forEach(r=>lastPoll.set('l'+r,now));
+  /* all the lines due this round in one request (a single line goes on its own) */
+  if(dueLines.length>1&&batchOK) jobs.push(()=>pollLines(dueLines));
+  else for(const r of dueLines.slice(0,2)) jobs.push(()=>pollLine(r));
   for(const i of stops) if(due('s'+i)){ lastPoll.set('s'+i,now); jobs.push(()=>pollStop(i)); }
-  for(const r of order.slice(2)) if(due('l'+r)){ lastPoll.set('l'+r,now); jobs.push(()=>pollLine(r)); }
+  if(!(dueLines.length>1&&batchOK)) for(const r of dueLines.slice(2)) jobs.push(()=>pollLine(r));
   if(jobs.length){
     let ok=false, next=0;
     const worker=async()=>{ while(next<jobs.length){ if(await jobs[next++]()) ok=true; } };
