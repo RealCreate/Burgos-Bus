@@ -1458,13 +1458,22 @@ const LIVE_STALE=45000;            /* older than this and the live data is dropp
 const liveLines=new Map();          /* line index -> {at, buses:[{id,r,ruta,lat,lon,pl}]} */
 const liveStops=new Map();          /* stop index -> {at, rows:[{r,h,sec,m,last,bus}]} */
 const liveBusy=new Set();
-async function liveGet(path){
-  if(liveBusy.has(path)) return null; liveBusy.add(path);
+/* One fetch through the relay: the list it returns and when the city sent it (the relay may hand back
+   its last good answer, a few seconds old, when the city's server has a hiccup). A failed fetch is
+   tried once more after a moment before giving up until the next round. */
+async function liveGet1(path){
   const ctl=typeof AbortController!=='undefined'?new AbortController():null, tm=setTimeout(()=>ctl&&ctl.abort(),8000);
   try{ const r=await fetch(LIVE_API+path,{cache:'no-store',signal:ctl?ctl.signal:undefined}); if(!r.ok) return null;
-    const j=await r.json(); return Array.isArray(j)?j:null; }
+    const j=await r.json(); if(!Array.isArray(j)) return null;
+    const age=Math.max(0,Math.min(60,+r.headers.get('X-Relay-Age')||0));
+    return {j,at:Date.now()-age*1000}; }
   catch(e){ return null; }
-  finally{ clearTimeout(tm); liveBusy.delete(path); }
+  finally{ clearTimeout(tm); }
+}
+async function liveGet(path){
+  if(liveBusy.has(path)) return null; liveBusy.add(path);
+  try{ return await liveGet1(path) || await new Promise(ok=>setTimeout(ok,1500)).then(()=>liveGet1(path)); }
+  finally{ liveBusy.delete(path); }
 }
 const fresh=e=>!!e&&Date.now()-e.at<LIVE_STALE;
 function liveFor(r){ if(!ctx().live) return null; const e=liveLines.get(r); return fresh(e)?e:null; }
@@ -1657,21 +1666,25 @@ function liveWanted(){
   return {lines,stops};
 }
 async function pollLine(r){
-  const list=await liveGet('obtenervehiculosenlinea/'+encodeURIComponent(R[r].n));
-  if(list==null) return false;
+  const res=await liveGet('obtenervehiculosenlinea/'+encodeURIComponent(R[r].n));
+  if(res==null) return false;
   const buses=[];
-  list.forEach(v=>{ const lat=+v.lat, lon=+v.lng;
+  res.j.forEach(v=>{ const lat=+v.lat, lon=+v.lng;
     if(isFinite(lat)&&isFinite(lon)&&Math.abs(lat-42.34)<0.3&&Math.abs(lon+3.7)<0.3) buses.push({id:v.vehiculo,r,ruta:v.ruta,lat,lon}); });
+  /* a sudden empty list while buses were showing moments ago is usually a glitch at the city's end:
+     the buses already shown stay until a list with buses arrives or they go stale */
+  const prev=liveLines.get(r);
+  if(!buses.length&&fresh(prev)&&prev.buses.length) return false;
   buses.forEach(b=>{b.pl=placeLive(b)});
-  liveLines.set(r,{at:Date.now(),buses}); return true;
+  liveLines.set(r,{at:res.at,buses}); return true;
 }
 async function pollStop(i){
   const res=await liveGet('ObtenerTiemposRutaPorParada/'+stopNum(i)); if(res==null) return false;
   const rows=[];
-  for(const g of res){ if(!g||g.header===true) continue; const r=lineOfCode(String(g.line||'').trim()); if(r<0) continue;
+  for(const g of res.j){ if(!g||g.header===true) continue; const r=lineOfCode(String(g.line||'').trim()); if(r<0) continue;
     for(const e of g.publicEstimationVHExts||[]){ const sec=+e.seconds; if(!isFinite(sec)) continue;
       rows.push({r,h:String(e.destination||g.destination||''),sec,m:+e.meters||0,last:!!e.isLastBus,bus:e.vehicle}); } }
-  liveStops.set(i,{at:Date.now(),rows}); return true;
+  liveStops.set(i,{at:res.at,rows}); return true;
 }
 let liveTimer=0; const lastPoll=new Map();
 async function livePoll(onlyNew){
