@@ -207,7 +207,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 @keyframes selpulse{0%{transform:scale(.45);opacity:.9}100%{transform:scale(1.25);opacity:0}}
 @media (prefers-reduced-motion:reduce){.selstop .ring{animation:none;opacity:.5;transform:scale(.9)}}
 .veh{position:relative;width:60px;height:60px;pointer-events:none}
-.veh .rot{position:absolute;inset:0;transition:transform .9s linear}
+.veh .rot{position:absolute;inset:0;will-change:transform}
 .veh .hit{position:absolute;inset:6px;border-radius:50%;pointer-events:auto;cursor:pointer}
 .busdet h4{display:flex;align-items:center;gap:6px}
 .bstat{display:flex;align-items:center;gap:7px;margin:8px 0 2px;font-size:.88rem}
@@ -237,7 +237,6 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .veh .body{position:absolute;left:50%;top:50%;width:22.4px;height:48.2px;margin:-24.1px 0 0 -11.2px;overflow:visible;pointer-events:auto;cursor:pointer;filter:drop-shadow(0 2px 3px rgba(0,0,0,.35))}
 .veh .arrow{position:absolute;left:50%;top:-6px;margin-left:-6px;width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-bottom:8px solid var(--muted);filter:drop-shadow(0 0 1.5px var(--surface))}
 .veh .num{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font:700 11.5px/1 var(--font-display);letter-spacing:-.02em;color:var(--t);font-variant-numeric:tabular-nums;white-space:nowrap;pointer-events:none}
-@media (prefers-reduced-motion:reduce){.veh .rot{transition:none}}
 .pop h4{margin:0 0 2px;font:700 1rem var(--font-display)}
 .pop .code{font-size:.72rem;color:var(--muted)}
 .pop ul{list-style:none;margin:8px 0 6px;padding:0;display:flex;flex-direction:column;gap:4px}
@@ -1155,6 +1154,7 @@ function initMap(){
   map.on('dragstart',()=>{ if(follow) setFollow(false); });
   map.on('zoomend',styleStops);
   busLayer=L.layerGroup().addTo(map); ringLayer=L.layerGroup().addTo(map);
+  map.on('zoomstart',()=>{zooming=true}); map.on('zoomend',()=>{zooming=false;startGlide()});
   map.on('popupopen',e=>{if(e.popup._stop!=null){popupStop=e.popup._stop;markSel();liveKick()}});
   map.on('popupclose',e=>{if(e.popup._stop!=null&&e.popup._stop===popupStop){popupStop=null;markSel()}});
   map.on('click',()=>{ if(st.panel&&!wide()&&st.full){st.full=false;render(true)} });
@@ -1406,19 +1406,14 @@ function busPopup(id){
   if(a.wait){ state='wait'; line1=T('nextLeaves',{stop:esc(S[p.s[0]].name),time:hhmm(t0)}); from=1; }
   else if(N-at(a.k)<=20){ state='atstop'; line1=T('atStop',{stop:esc(S[p.s[a.k]].name)}); from=a.k+1; }
   else { state='move'; line1=`${T('headingTo',{stop:esc(S[p.s[a.k+1]].name)})} · ${cd(a.k+1)}`; from=a.k+1; }
-  const label={move:'busMoving',atstop:'busStopped',wait:'busWaiting'}[state];
   const nextIdx=a.wait?0:(state==='atstop'?a.k:a.k+1);
   const ups=[]; for(let k=Math.max(from,state==='move'?a.k+2:from);k<p.s.length&&ups.length<3;k++) ups.push(k);
   const last=p.s.length-1;
   return `<div class="pop busdet"><div class="dyn">
 <h4><span class="badge sm" style="background:${x.col};color:${x.txt}">${esc(x.n)}</span> → ${esc(p.h)}</h4>
-<div class="bstat ${state}"><span class="sdot"></span><b>${T(label)}</b></div>
 <div class="bline">${line1}</div>
-<div class="code">${T('progress',{k:nextIdx+1,n:p.s.length})}</div>
 <div class="bar"><span style="width:${(100*(nextIdx)/Math.max(1,last)).toFixed(1)}%"></span></div>
-${ups.length?`<div class="code" style="margin-top:8px">${T('upcoming')}</div><ul>${ups.map(k=>`<li><span class="ph">${esc(S[p.s[k]].name)}</span><b>${hhmm(at(k))}</b></li>`).join('')}</ul>`:''}
-<div class="code">${T('endsAt',{stop:esc(S[p.s[last]].name),time:hhmm(at(last))})}</div>
-<div class="code" style="margin:6px 0">${T('busEst')}</div></div>
+${ups.length?`<div class="code" style="margin-top:8px">${T('upcoming')}</div><ul>${ups.map(k=>`<li><span class="ph">${esc(S[p.s[k]].name)}</span><b>${hhmm(at(k))}</b></li>`).join('')}</ul>`:''}</div>
 <button data-line="${p.r}" data-dirp="${p.id}" data-keepdir>${T('openLine')}</button></div>`;
 }
 function drawBuses(){
@@ -1440,24 +1435,17 @@ function drawBuses(){
         m=L.marker(ll,{icon,keyboard:false,title:T('busTitle',{n:x.n,dest:a.p.h}),zIndexOffset:500}).addTo(busLayer);
         m.bindPopup(()=>{m._ph=busPopup(id);return m._ph},{maxWidth:280,minWidth:220,autoPanPaddingTopLeft:popPad()});
         busMarkers.set(id,m);
-      } else m.setLatLng(ll);
+      }
+      glideTo(m,{sh:a.p.sh,d,hd},1100);
       m._a=a;
       if(m.isPopupOpen()){ /* refresh only the text part so the button under a finger is never swapped out */
         const h=busPopup(id); if(h!==m._ph){ m._ph=h; const box=m.getPopup().getElement(), dyn=box&&box.querySelector('.dyn');
           if(dyn){ const tmp=document.createElement('div'); tmp.innerHTML=h; dyn.innerHTML=tmp.querySelector('.dyn').innerHTML; } else m.getPopup().setContent(h); } }
-      const el=m.getElement(), dir=el&&el.querySelector('.rot');
+      const el=m.getElement();
       if(el) el.classList.toggle('parked',!!a.wait);
-      if(dir){
-        if(hd==null) dir.querySelector('.arrow').style.visibility='hidden';
-        else {
-          /* turn the short way round so the arrow never spins a full circle */
-          const prev=m._hd??hd; let delta=((hd-prev)%360+540)%360-180; const next=prev+delta;
-          m._hd=next; dir.querySelector('.arrow').style.visibility=''; dir.style.transform=`rotate(${next}deg)`;
-        }
-      }
     }
   }
-  for(const [id,m] of busMarkers){ if(!seen.has(id)){ cancelAnimationFrame(m._glide); busLayer.removeLayer(m); busMarkers.delete(id); } }
+  for(const [id,m] of busMarkers){ if(!seen.has(id)){ busLayer.removeLayer(m); busMarkers.delete(id); } }
 }
 
 /* ---------- live data ----------
@@ -1520,7 +1508,7 @@ function placeLive(b){
   if(best){ const h=headingAt(best.p.sh,best.d); if(h!=null&&(moved==null||angDiff(h,moved)<60)) hd=h; }
   if(hd==null&&prev) hd=prev.hd;
   busTrack.set(key,{lat:b.lat,lon:b.lon,hd,pid:best?best.p.id:null});
-  return {p:best?best.p:null,d:best?best.d:0,hd};
+  return {p:best?best.p:null,d:best?best.d:0,m:best?best.m:1e9,hd};
 }
 /* where a live bus sits on route p: between stops j and j+1, fraction f; null when it isn't on it */
 function liveOn(b,p){
@@ -1551,49 +1539,113 @@ function drawLiveBuses(r,seen){
       const icon=L.divIcon({className:'vehwrap',html:`<div class="veh" style="--c:${x.col};--t:${x.txt}"><span class="hit"></span><div class="rot"><span class="arrow"></span>${BUS_TOP}</div><span class="num">${esc(x.n)}</span><span class="lv"></span></div>`,iconSize:[60,60],iconAnchor:[30,30]});
       m=L.marker([b.lat,b.lon],{icon,keyboard:false,title:T('busTitle',{n:x.n,dest:b.pl.p?b.pl.p.h:x.name}),zIndexOffset:550}).addTo(busLayer);
       m.bindPopup(()=>{m._ph=livePopup(id);return m._ph},{maxWidth:280,minWidth:220,autoPanPaddingTopLeft:popPad()});
-      busMarkers.set(id,m); m._at=e.at;
+      busMarkers.set(id,m); m._at=e.at; m._fix=[b.lat,b.lon]; m._moved=performance.now(); m._gap=pollEvery(shownLines().size);
+      glideTo(m,liveTarget(b),0);
     } else if(m._at!==e.at){
-      /* glide to the new fix instead of jumping */
-      m._at=e.at; cancelAnimationFrame(m._glide);
-      const from=m.getLatLng(), t0=performance.now(), D=reduceMotion?0:1500;
-      const step=now=>{ const f=D?Math.min(1,(now-t0)/D):1, k=1-Math.pow(1-f,3);
-        m.setLatLng([from.lat+(b.lat-from.lat)*k, from.lng+(b.lon-from.lng)*k]); if(f<1) m._glide=requestAnimationFrame(step); };
-      m._glide=requestAnimationFrame(step);
+      m._at=e.at;
+      /* the city's tracking doesn't give a new position on every fetch: only when the bus has really
+         moved does it get a new target, reached over about the time its fixes have been coming in, so
+         it is still moving when the next one arrives */
+      if(distM(m._fix[0],m._fix[1],b.lat,b.lon)>3){
+        const now=performance.now(), gap=Math.max(3000,Math.min(30000,now-m._moved));
+        m._gap=m._gap*.5+gap*.5; m._moved=now; m._fix=[b.lat,b.lon];
+        glideTo(m,liveTarget(b),m._gap*1.1);
+      }
     }
     m._live={b,at:e.at};
     if(m.isPopupOpen()){ const h=livePopup(id); if(h!==m._ph){ m._ph=h; const box=m.getPopup().getElement(), dyn=box&&box.querySelector('.dyn');
       if(dyn){ const tmp=document.createElement('div'); tmp.innerHTML=h; dyn.innerHTML=tmp.querySelector('.dyn').innerHTML; } else m.getPopup().setContent(h); } }
-    const el=m.getElement(), dir=el&&el.querySelector('.rot');
-    if(dir){
-      const hd=b.pl.hd;
-      if(hd==null) dir.querySelector('.arrow').style.visibility='hidden';
-      else { const prev=m._hd??hd, next=prev+(((hd-prev)%360+540)%360-180); m._hd=next; dir.querySelector('.arrow').style.visibility=''; dir.style.transform=`rotate(${next}deg)`; }
-    }
   }
 }
+/* a live bus close to its route line is drawn on it, so it follows the street; off it (a diversion),
+   at its GPS position */
+const liveTarget=b=>b.pl.p&&b.pl.m<=40?{sh:b.pl.p.sh,d:b.pl.d,hd:b.pl.hd}:{ll:[b.lat,b.lon],hd:b.pl.hd};
+
+/* ---------- smooth bus motion ----------
+   Bus markers never jump: each one glides at a steady speed to the position it is given, along its
+   route line when it has one (so it turns corners with the street) and in a straight line otherwise.
+   One animation loop moves them all and stops when nothing is moving. */
+let glideFrame=0, glideLast=0, zooming=false;
+function glidePos(g,now){
+  const f=g.dur>0?Math.min(1,Math.max(0,(now-g.t0)/g.dur)):1;
+  if(g.sh!=null){ const d=g.d0+(g.d1-g.d0)*f; return {ll:pointAlong(g.sh,d),d}; }
+  return {ll:[g.a[0]+(g.b[0]-g.a[0])*f, g.a[1]+(g.b[1]-g.a[1])*f], d:null};
+}
+function glideTo(m,to,dur){
+  const now=performance.now(), g=m._g, cur=g?glidePos(g,now):null;
+  if(reduceMotion||!cur) dur=0;
+  let ng=null;
+  if(to.sh!=null){
+    let d0=null;
+    if(g&&g.sh===to.sh) d0=cur.d;
+    else if(cur){ const sn=snapTo(to.sh,cur.ll[0],cur.ll[1]); if(sn.m<40) d0=sn.d; }
+    if(d0!=null){
+      const back=d0-to.d;
+      /* GPS wobble that would pull the bus backwards is ignored; a real jump is not animated */
+      if(back>0&&back<80) ng={sh:to.sh,d0,d1:d0,t0:now,dur:0,hd:to.hd};
+      else if(back<=0&&-back<2500) ng={sh:to.sh,d0,d1:to.d,t0:now,dur,hd:to.hd};
+    }
+    if(!ng){ const ll=pointAlong(to.sh,to.d);
+      ng=cur&&distM(cur.ll[0],cur.ll[1],ll[0],ll[1])<300?{a:cur.ll,b:ll,t0:now,dur,hd:to.hd,then:to}:{sh:to.sh,d0:to.d,d1:to.d,t0:now,dur:0,hd:to.hd}; }
+  } else {
+    const far=!cur||distM(cur.ll[0],cur.ll[1],to.ll[0],to.ll[1])>2500;
+    ng={a:far?to.ll:cur.ll,b:to.ll,t0:now,dur:far?0:dur,hd:to.hd};
+  }
+  m._g=ng; if(!g){ m.setLatLng(glidePos(ng,now).ll); turnBus(m,to.sh!=null?headingAt(to.sh,to.d)??to.hd:to.hd,0); }
+  startGlide();
+}
+/* point the bus's arrow, turning smoothly (and the short way round) rather than snapping */
+function turnBus(m,hd,dt){
+  const el=m.getElement(), dir=el&&el.querySelector('.rot'); if(!dir) return;
+  const arrow=dir.querySelector('.arrow');
+  if(hd==null){ if(m._hd==null) arrow.style.visibility='hidden'; return; }
+  const prev=m._hd??hd, delta=((hd-prev)%360+540)%360-180;
+  const next=dt&&!reduceMotion?prev+delta*(1-Math.exp(-dt/180)):prev+delta;
+  if(m._hd!=null&&Math.abs(next-m._hd)<.2&&arrow.style.visibility!=='hidden') return;
+  m._hd=next; arrow.style.visibility=''; dir.style.transform=`rotate(${next.toFixed(1)}deg)`;
+}
+function glideLoop(now){
+  glideFrame=0; if(!map||document.hidden) return;
+  const dt=glideLast?Math.min(100,now-glideLast):16; glideLast=now; let busy=zooming;
+  if(!zooming) for(const m of busMarkers.values()){
+    const g=m._g; if(!g||g.done) continue;
+    const p=glidePos(g,now); m.setLatLng(p.ll);
+    const want=g.sh!=null?headingAt(g.sh,p.d)??g.hd:g.hd;
+    turnBus(m,want,dt);
+    const settled=m._hd==null||want==null||Math.abs(((want-m._hd)%360+540)%360-180)<1;
+    if(now-g.t0>=g.dur){
+      /* a straight hop back onto the route line carries on along it from there */
+      if(g.then){ m._g={sh:g.then.sh,d0:g.then.d,d1:g.then.d,t0:now,dur:0,hd:g.hd}; busy=true; }
+      else if(settled) g.done=true; else busy=true;
+    } else busy=true;
+  }
+  if(busy) glideFrame=requestAnimationFrame(glideLoop); else glideLast=0;
+}
+function startGlide(){ if(!glideFrame&&map&&!document.hidden) glideFrame=requestAnimationFrame(glideLoop); }
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden){ glideLast=0; startGlide(); } });
 function livePopup(id){
   const m=busMarkers.get(id); if(!m||!m._live) return '';
-  const {b,at}=m._live, x=R[b.r], p=b.pl.p, ago=Math.max(0,Math.round((Date.now()-at)/1000));
+  const {b}=m._live, x=R[b.r], p=b.pl.p;
   let mid='';
   if(p){
     let k=0; while(k<p.s.length-1&&p.dist[k+1]<=b.pl.d+15) k++;
     const last=p.s.length-1, atStop=Math.abs(p.dist[k]-b.pl.d)<=30, nxt=Math.min(k+1,last);
     const line1=atStop||k===last?T('atStop',{stop:esc(S[p.s[k]].name)}):T('headingTo',{stop:esc(S[p.s[nxt]].name)});
     const ups=[]; for(let q=(atStop?k:nxt)+1;q<=last&&ups.length<3;q++) ups.push(q);
-    mid=`<div class="bline">${line1}</div><div class="code">${T('progress',{k:(atStop?k:nxt)+1,n:p.s.length})}</div>
+    mid=`<div class="bline">${line1}</div>
 <div class="bar"><span style="width:${(100*(atStop?k:nxt)/Math.max(1,last)).toFixed(1)}%"></span></div>
 ${ups.length?`<div class="code" style="margin-top:8px">${T('upcoming')}</div><ul>${ups.map(q=>`<li><span class="ph">${esc(S[p.s[q]].name)}</span></li>`).join('')}</ul>`:''}`;
   }
   return `<div class="pop busdet"><div class="dyn">
 <h4><span class="badge sm" style="background:${x.col};color:${x.txt}">${esc(x.n)}</span> → ${esc(p?p.h:x.name)}</h4>
-<div class="bstat move"><span class="sdot"></span><b>${T('live')}</b> · ${T('busNo',{n:esc(b.id)})}</div>
-${mid}<div class="code" style="margin:6px 0">${T('busLive',{s:ago})}</div></div>
+${mid}</div>
 ${p?`<button data-line="${b.r}" data-dirp="${p.id}" data-keepdir>${T('openLine')}</button>`:`<button data-line="${b.r}">${T('openLine')}</button>`}</div>`;
 }
 
 /* What to fetch: buses for the lines on the map (and the one open), arrival times for the stop that is
-   open in the panel or in a pop-up. Every 10 s, or 20 s when many lines are on, and right away when
-   something new is opened. */
+   open in the panel or in a pop-up. Every 5 s (as often as the city's own app, and the relay's cache)
+   with up to 4 lines on, 10 s with up to 8, 20 s with more, and right away when something new is opened. */
+const pollEvery=n=>n<=4?5000:n<=8?10000:20000;
 function liveWanted(){
   const sel=selection(), lines=new Set(shownLines()); if(sel.r>=0) lines.add(sel.r);
   const stops=new Set(); const top=st.stack[st.stack.length-1];
@@ -1626,7 +1678,7 @@ async function livePoll(onlyNew){
   clearTimeout(liveTimer);
   if(document.hidden||!ctx().live){ liveTimer=setTimeout(()=>livePoll(),10000); return; }
   const {lines,stops}=liveWanted(), now=Date.now();
-  const due=k=>!onlyNew||!(now-(lastPoll.get(k)||0)<8000);
+  const due=k=>!onlyNew||!(now-(lastPoll.get(k)||0)<4000);
   const jobs=[];
   for(const r of lines) if(due('l'+r)){ lastPoll.set('l'+r,now); jobs.push(pollLine(r)); }
   for(const i of stops) if(due('s'+i)){ lastPoll.set('s'+i,now); jobs.push(pollStop(i)); }
@@ -1636,7 +1688,7 @@ async function livePoll(onlyNew){
       const top=st.stack[st.stack.length-1], a=document.activeElement;
       if(st.panel&&top&&!(a&&a.tagName==='INPUT')) render(true); }
   }
-  liveTimer=setTimeout(()=>livePoll(),lines.size>8?20000:10000);
+  liveTimer=setTimeout(()=>livePoll(),pollEvery(lines.size));
 }
 let kickTimer=0;
 function liveKick(){ clearTimeout(kickTimer); kickTimer=setTimeout(()=>livePoll(true),250); }
