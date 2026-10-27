@@ -1094,7 +1094,7 @@ function stopView(v){
   if(la){
     h+=`<div class="eyebrow"><span class="livedot"></span>${T('live')}</div><div class="list">`;
     la.forEach(d=>{ const pp=patFor(d.r,d.h);
-      h+=`<button class="dep" data-line="${d.r}"${pp?` data-dirp="${pp.id}"`:''} data-hl="${v.s}">${badge(d.r)}<div class="main"><div class="hs">${esc(d.h||R[d.r].name)}${d.last?` <span class="lastbus">${T('lastBus')}</span>`:''}</div><div class="via">${d.m>0?T('away',{d:fmtDist(d.m)})+' · ':''}${T('busNo',{n:esc(d.bus)})}</div></div><div class="when ${d.sec<=600?'soon':''}">${liveWhen(d.sec)}</div></button>`; });
+      h+=`<button class="dep" data-line="${d.r}"${pp?` data-dirp="${pp.id}"`:''} data-hl="${v.s}">${badge(d.r)}<div class="main"><div class="hs">${esc(d.h||R[d.r].name)}${d.last?` <span class="lastbus">${T('lastBus')}</span>`:''}</div>${d.m>0?`<div class="via">${T('away',{d:fmtDist(d.m)})}</div>`:''}</div><div class="when ${d.sec<=600?'soon':''}">${liveWhen(d.sec)}</div></button>`; });
     h+=`</div><p class="note">${T('liveNote')}</p>`;
   }
   /* a temporary stop has no timetable: live times or nothing */
@@ -1776,7 +1776,10 @@ async function pollStop(i){
   for(const g of res.j){ if(!g||g.header===true) continue; const r=lineOfCode(String(g.line||'').trim()); if(r<0) continue;
     for(const e of g.publicEstimationVHExts||[]){ const sec=+e.seconds; if(!isFinite(sec)) continue;
       rows.push({r,h:String(e.destination||g.destination||''),sec,m:+e.meters||0,last:!!e.isLastBus,bus:e.vehicle}); } }
-  liveStops.set(i,{at:res.at,rows}); return true;
+  /* the city sometimes lists the same bus twice for a stop (under two of its route variants):
+     each bus is shown once, with its soonest time */
+  const seen=new Set(), uniqRows=rows.sort((a,b)=>a.sec-b.sec).filter(x=>{ const k=x.r+'|'+(x.bus??Math.random()); if(seen.has(k)) return false; seen.add(k); return true; });
+  liveStops.set(i,{at:res.at,rows:uniqRows}); return true;
 }
 let liveTimer=0; const lastPoll=new Map();
 async function livePoll(onlyNew){
