@@ -47,8 +47,30 @@ def gtfs_data(zip_path):
         return open(data_json, encoding='utf-8').read().replace('</', '<\\/')
 
 
+def snap_routes(data):
+    """Route outlines snapped onto the roads of map/burgos.pmtiles (tools/match_shapes.py), once per timetable."""
+    d = json.loads(data.replace('<\\/', '</'))
+    if d.get('matched'):
+        return data
+    pm = os.path.join(ROOT, 'map', 'burgos.pmtiles')
+    try:
+        import pmtiles  # noqa: F401
+    except ImportError:
+        print('warning: route outlines not snapped to the roads (pip install pmtiles)')
+        return data
+    if not os.path.exists(pm):
+        print('warning: route outlines not snapped to the roads (no map/burgos.pmtiles)')
+        return data
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, 'data.json')
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(json.dumps(d, separators=(',', ':'), ensure_ascii=False))
+        subprocess.run([sys.executable, '-I', os.path.join(HERE, 'match_shapes.py'), path, pm], check=True)
+        return open(path, encoding='utf-8').read().replace('</', '<\\/')
+
+
 def main(src):
-    data = current_data() if src == '--keep-data' else gtfs_data(src)
+    data = snap_routes(current_data() if src == '--keep-data' else gtfs_data(src))
     css = open(os.path.join(HERE, 'leaflet.css'), encoding='utf-8').read()
     css = re.sub(r'/\*.*?\*/', '', css, flags=re.S)
     css = re.sub(r'[^{}]*\{[^{}]*url\([^)]*\)[^{}]*\}', '', css)

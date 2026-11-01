@@ -36,6 +36,9 @@ jobs:
         with:
           python-version: '3.12'
 
+      # reads the map file, to snap the bus routes onto its roads (tools/match_shapes.py)
+      - run: pip install pmtiles
+
       - name: Get the timetable
         id: get
         run: |
