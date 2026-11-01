@@ -1253,8 +1253,11 @@ function initMap(){
   map.on('dragstart',stopFollowBus);
   map.getContainer().addEventListener('pointerdown',e=>{ if(!e.target.closest('.leaflet-popup,.vehwrap,.leaflet-control')) stopFollowBus(); },{passive:true});
   map.getContainer().addEventListener('wheel',stopFollowBus,{passive:true});
-  map.on('popupopen',e=>{if(e.popup._stop!=null){popupStop=e.popup._stop;markSel();liveKick()}});
-  map.on('popupclose',e=>{if(e.popup._stop!=null&&e.popup._stop===popupStop){popupStop=null;markSel()}});
+  map.on('popupopen',e=>{if(e.popup._stop!=null){popupStop=e.popup._stop;markSel();liveKick()}
+    const src=e.popup._source; if(src&&(src._live||src._a)){ busFocusSrc=src; setBusFocus(busRouteOf(src)); }});
+  map.on('popupclose',e=>{if(e.popup._stop!=null&&e.popup._stop===popupStop){popupStop=null;markSel()}
+    if(e.popup._source&&e.popup._source===busFocusSrc){ busFocusSrc=null; setBusFocus(null); }});
+  map.on('zoomend',drawArrows);
   map.on('click',()=>{ if(st.panel&&!wide()&&st.full){st.full=false;render(true)} });
 }
 /* Double tap (or double click) zooms in one level, keeping the tapped point under your finger, as in
@@ -1363,7 +1366,44 @@ function styleStops(){
     if(!m._anim) m.setRadius(m._r);
   }
 }
+/* A bus whose pop-up is open: its line is drawn as if selected (the others fade), its own route on top
+   with arrows in its direction of travel, until the pop-up closes. Only the drawing changes; the panel,
+   the map position and the live updates carry on as before. */
+let busFocus=null, busFocusSrc=null, arrowLayer=null, arrowRoute=null;
+function busRouteOf(m){
+  if(m._live){ const b=m._live.b; return {r:b.r,pid:b.pl&&b.pl.p?b.pl.p.id:null}; }
+  if(m._a&&m._a.p) return {r:m._a.p.r,pid:m._a.p.id};
+  return null;
+}
+function setBusFocus(f){
+  const k=f?f.r+'|'+f.pid:'', k0=busFocus?busFocus.r+'|'+busFocus.pid:'';
+  busFocus=f; if(k!==k0&&drawnKey!=null){ drawRoutes(selection()); markedStop=undefined; markSel(); }
+}
+/* arrows along a route in its direction of travel, one every ARROW_GAP pixels at the current zoom */
+const ARROW_GAP=90;
+function drawArrows(){
+  if(arrowLayer){ arrowLayer.remove(); arrowLayer=null; }
+  if(!arrowRoute||!map) return;
+  const z=map.getZoom(), pts=SH[arrowRoute.sh].pts.map(ll=>map.project(ll,z));
+  arrowLayer=L.layerGroup(); let carry=ARROW_GAP*.5;
+  for(let i=1;i<pts.length;i++){
+    const a=pts[i-1], b=pts[i], dx=b.x-a.x, dy=b.y-a.y, len=Math.hypot(dx,dy); if(!len) continue;
+    const ux=dx/len, uy=dy/len; let placed=false;
+    for(let d=carry; d<len; d+=ARROW_GAP){ placed=true;
+      const cx=a.x+ux*d, cy=a.y+uy*d, L1=5.5, W=4.5;
+      const tri=[[cx+ux*L1,cy+uy*L1],[cx-ux*L1-uy*W,cy-uy*L1+ux*W],[cx-ux*L1*.35,cy-uy*L1*.35],[cx-ux*L1+uy*W,cy-uy*L1-ux*W]]
+        .map(q=>map.unproject(L.point(q[0],q[1]),z));
+      L.polygon(tri,{stroke:false,fillColor:'#fff',fillOpacity:.95,interactive:false}).addTo(arrowLayer);
+      carry=d+ARROW_GAP-len;
+    }
+    if(!placed) carry-=len;
+  }
+  arrowLayer.addTo(map);
+  /* stops stay on top of the arrows */
+  if(stopLayer) stopLayer.eachLayer(m=>m.bringToFront&&m.bringToFront());
+}
 function drawRoutes(sel){
+  if(busFocus) sel={r:busFocus.r,pid:busFocus.pid,stop:sel.stop};
   /* redrawing removes the stop markers, which closes a stop pop-up bound to one; reopen it after */
   const pp=map._popup, reopen=pp&&map.hasLayer(pp)&&pp._stop!=null?pp._stop:null;
   if(baseLayer) baseLayer.remove(); if(stopLayer) stopLayer.remove();
@@ -1410,6 +1450,8 @@ function drawRoutes(sel){
     stopMarkers.push(m);
   }
   baseLayer.addTo(map); stopLayer.addTo(map); styleStops();
+  /* the open line's (or tapped bus's) route shows which way it goes */
+  arrowRoute=selP||null; drawArrows();
   if(reopen!=null){ const s=S[reopen]; const np=stopPop(reopen); np.options.autoPan=false; np.setLatLng([s.lat,s.lon]).openOn(map); }
 }
 function stopPopup(i){
