@@ -634,6 +634,22 @@ const NOTICES=[{
     '22':{closed:['PA00500','PA00310','PA00308','PA00267','PA00501','PA00580','PA00603','PA00495','PA00185','PA00029','PA00156','PA00496'],
           alt:[['Caleruega 5'],['Caleruega 20B',1],['Navas de Tolosa – Claustrillas',1],['Navas de Tolosa – Parque',1]],
           add:[['PA00628',['PA00494','PA00995','PA00996']],['PA00580',['PA00997']]]}
+  }},{
+  /* The stop inside the HUBU grounds is closed while the hospital works last (council notice, 17 Jul 2026:
+     from 20 Jul "until the works finish"). Remove this entry, or set `to`, once it reopens.
+     C.D. Talamillo is the existing stop Islas Canarias - Centro deportivo (PA00578). */
+  from:'20260720', to:'20271231', title:'dvHubu',
+  lines:{
+    '02':{closed:['PA00609'], alt:[['Islas Canarias - Centro deportivo'],['Islas Baleares – frente HUBU',1]], add:[['PA00609',['PA00578','HUBU-B']]]},
+    '03':{closed:['PA00609'], alt:[['Islas Canarias - Centro deportivo']], add:[['PA00609',['PA00578']]]},
+    '04':{closed:['PA00609'], alt:[['Islas Baleares – HUBU',1],['Islas Baleares – frente HUBU',1],['Pozanos 96']], add:[['PA00609',['HUBU-A','HUBU-B']]]},
+    '05':{closed:['PA00609'], alt:[['Islas Canarias - Centro deportivo']], add:[['PA00609',['PA00578']]]},
+    '07':{closed:['PA00609'], alt:[['Islas Canarias - Centro deportivo'],['Pozanos 96']]},
+    '13':{closed:['PA00609'], alt:[['Islas Baleares – HUBU',1],['Pozanos 96']], add:[['PA00609',['HUBU-A']]]},
+    '16':{closed:['PA00609'], alt:[['Islas Canarias - Centro deportivo']], add:[['PA00609',['PA00578']]]},
+    '22':{closed:['PA00609'], alt:[['Islas Canarias - Centro deportivo']]},
+    'C1':{closed:['PA00609'], alt:[['Islas Canarias - Centro deportivo'],['Islas Baleares – frente HUBU',1]], add:[['PA00609',['HUBU-B']]]},
+    'C2':{closed:['PA00609'], alt:[['Islas Canarias - Centro deportivo'],['Islas Baleares – HUBU',1]], add:[['PA00609',['HUBU-A']]]}
   }}];
 /* The new temporary stops, keyed by the name used in alt, with the city's own stop codes and positions
    (from its bus-tracking data, 26 Oct). Navas de Tolosa is two stops a few metres apart on either side
@@ -646,7 +662,13 @@ const TEMP_STOPS={
   'Navas de Tolosa – Parque':{code:'PA00997',ll:[42.338247,-3.727292]},
   /* Reina Leonor: Monasterio de las Huelgas towards El Pilar, Hospital Militar towards the centre (05, 07) */
   'Reina Leonor – Monasterio de las Huelgas':{code:'PA00998',ll:[42.337693,-3.716914]},
-  'Reina Leonor – Hospital Militar':{code:'PA00999',ll:[42.338639,-3.717158]}};
+  'Reina Leonor – Hospital Militar':{code:'PA00999',ll:[42.338639,-3.717158]},
+  /* the two new HUBU stops on Avda. Islas Baleares, just south-west of the Islas Canarias roundabout,
+     placed from the council's plan (no stop codes published yet): A on the hospital side (13; 4 from
+     Castañares; C2 towards the cemetery), B across the avenue (2 from Arcos; C1 from the cemetery;
+     4 towards Castañares). Approximate: correct `ll` with the exact spot when known. */
+  'Islas Baleares – HUBU':{code:'HUBU-A',ll:[42.360630,-3.685280]},
+  'Islas Baleares – frente HUBU':{code:'HUBU-B',ll:[42.360400,-3.685240]}};
 { const key=madridNow().key;
   for(const [name,t] of Object.entries(TEMP_STOPS)){
     const n=NOTICES.find(x=>key>=x.from&&key<=x.to&&Object.values(x.lines).some(l=>l.alt.some(a=>a[0]===name)));
@@ -989,27 +1011,34 @@ function tempStopNotice(i,compact){
   if(compact) return `<div class="dvpop">⚠ ${T('dvTempStop')} ${rs}</div>`;
   return `<div class="banner dv"><b>⚠ ${T('dvTempStop')} ${rs}</b><div>${T(t.n.title)}</div><div class="dvnote">${T('dvSince',{date:longKey(t.n.from)})}</div></div>`;
 }
-function noticeFor(r,key){
+/* every notice in force for line r on day key (a line can be on more than one diversion at once) */
+function noticesFor(r,key){
+  const out=[];
   for(const n of NOTICES){ if(key<n.from||key>n.to) continue; const l=n.lines[R[r].n];
-    if(l) return {n,l,closed:new Set(l.closed.map(c=>codeIdx.get(c)).filter(i=>i!=null))}; }
-  return null;
+    if(l) out.push({n,l,closed:new Set(l.closed.map(c=>codeIdx.get(c)).filter(i=>i!=null))}); }
+  return out;
 }
-const stopClosed=(st_,r,key)=>{const x=noticeFor(r,key);return !!x&&x.closed.has(st_)};
+const noticeFor=(r,key)=>noticesFor(r,key)[0]||null;
+const stopClosed=(st_,r,key)=>noticesFor(r,key).some(x=>x.closed.has(st_));
 /* for bus pop-ups: whether stop k of route p is served today, and the first served stop from k on */
 const isOpenAt=(p,k)=>!stopClosed(p.s[k],p.r,ctx().key);
 const nextOpen=(p,k)=>{ while(k<p.s.length&&!isOpenAt(p,k)) k++; return k; };
 const altList=alts=>alts.map(a=>(TEMP_STOPS[a[0]]?`<button class="tmpl" data-tmp="${esc(a[0])}">📍 ${esc(a[0])}</button>`:esc(a[0]))+(a[1]?` <small>(${T('dvNew')})</small>`:'')).join(', ');
 function diversionBanner(r,c,pat){
-  const x=noticeFor(r,c.key); if(!x) return '';
+  return noticesFor(r,c.key).map(x=>{
   const names=[...new Set(pat.s.filter(q=>x.closed.has(q)).map(q=>S[q].name))];
   if(!names.length) return '';   /* this direction isn't affected */
   return `<div class="banner dv"><b>⚠ ${T('dvTitle')} · ${T(x.n.title)}</b><div>${T('dvClosed')} ${names.map(esc).join(', ')}</div><div>${T('dvUse')} ${altList(x.l.alt)}</div><div class="dvnote">${T('dvSince',{date:longKey(x.n.from)})}</div></div>`;
+  }).join('');
 }
 function stopNotice(i,c,compact){
-  const rs=stopRoutes[i].filter(r=>stopClosed(i,r,c.key)); if(!rs.length) return '';
-  const x=noticeFor(rs[0],c.key), alts=[]; rs.forEach(r=>noticeFor(r,c.key).l.alt.forEach(a=>{if(!alts.some(b=>b[0]===a[0]))alts.push(a)}));
+  /* one notice per diversion that closes this stop, each with the lines it affects */
+  return NOTICES.filter(n=>c.key>=n.from&&c.key<=n.to).map(n=>{
+  const rs=stopRoutes[i].filter(r=>{const l=n.lines[R[r].n];return l&&l.closed.includes(S[i].code)}); if(!rs.length) return '';
+  const x={n}, alts=[]; rs.forEach(r=>n.lines[R[r].n].alt.forEach(a=>{if(!alts.some(b=>b[0]===a[0]))alts.push(a)}));
   if(compact) return `<div class="dvpop">⚠ ${T('dvStopOff')} ${rs.map(r=>badge(r,'sm')).join(' ')}<br>${T('dvUse')} ${altList(alts)}</div>`;
   return `<div class="banner dv"><b>⚠ ${T('dvStopOff')} ${rs.map(r=>badge(r,'sm')).join(' ')}</b><div>${T(x.n.title)}</div><div>${T('dvUse')} ${altList(alts)}</div><div class="dvnote">${T('dvSince',{date:longKey(x.n.from)})}</div></div>`;
+  }).join('');
 }
 
 function lineRow(r,c){
