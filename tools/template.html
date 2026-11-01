@@ -80,6 +80,39 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .maplegend[hidden]{display:none}
 .maplegend .lg{display:inline-block;width:12px;height:12px;border-radius:4px;margin-right:6px;vertical-align:-2px;background:var(--muted)}
 .maplegend .lg.live{background:var(--surface);box-shadow:0 0 0 2.5px var(--live)}
+.pbox{display:flex;align-items:center;gap:8px}
+.pfields{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--surface);border-radius:12px;box-shadow:var(--shadow);overflow:hidden}
+.pfield{display:flex;align-items:center;gap:10px;padding:12px 14px;text-align:left;font:inherit;font-weight:600;color:var(--ink);min-height:46px}
+.pfield+.pfield{border-top:1px solid var(--rule)}
+.pfield.empty{color:var(--muted);font-weight:400}
+.pfield span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pdot{flex:none;width:12px;height:12px;border-radius:50%;box-shadow:inset 0 0 0 3px var(--accent)}
+.pdot.d{border-radius:3px;box-shadow:none;background:var(--warn)}
+.ptime{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.ptime .chip[aria-pressed="true"],.ptimel[data-on="true"]{background:var(--accent-fill);color:#fff}
+.ptimel{display:inline-flex;align-items:center;gap:6px}
+.ptimel input{font:inherit;border:0;background:transparent;color:inherit;padding:0;min-width:5.5em}
+.pedit{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.pedit .search{flex:1}
+.pic{flex:none;width:28px;text-align:center;font-size:1.2rem}
+.popt .t1 b{font-size:1.05rem}
+.popt.sel{box-shadow:inset 3px 0 0 var(--accent)}
+.pdur{color:var(--muted);font-weight:600;margin-left:6px}
+.psteps{display:flex;align-items:center;flex-wrap:wrap;gap:4px;margin:6px 0 4px}
+.parr{color:var(--muted);font-size:.9rem}
+.pwalk{display:inline-flex;align-items:center;gap:2px;font-size:.8rem;font-weight:700;color:var(--muted)}
+.walkic{width:16px;height:16px;vertical-align:-3px}
+.chev{color:var(--muted);font-size:1.4rem;padding-left:4px}
+.ptrip{list-style:none;margin:0;padding:0}
+.ptrip li{display:grid;grid-template-columns:3.4em 1fr;gap:12px;position:relative;padding:0 0 18px}
+.ptrip li::before{content:"";position:absolute;left:calc(3.4em + 5px);top:6px;bottom:-6px;width:4px;border-radius:2px;background:var(--lc,transparent);border-left:3px dotted var(--muted)}
+.ptrip li.pb::before{border:0;background:var(--lc)}
+.ptrip li.pa::before,.ptrip li.pend::before{display:none}
+.ptrip li>div{padding-left:18px}
+.ptime-l{font-weight:700;font-variant-numeric:tabular-nums;text-align:right}
+.ptake{display:flex;align-items:center;gap:8px;margin:6px 0 2px;padding:0;background:none;border:0;font:inherit;color:var(--ink);text-align:left}
+.ppin{border-radius:50%;background:var(--surface);box-shadow:0 0 0 5px var(--accent),0 2px 6px rgba(0,0,0,.4)}
+.ppin.d{border-radius:5px;background:var(--warn);box-shadow:0 0 0 3px var(--surface),0 2px 6px rgba(0,0,0,.4)}
 .linkish{background:none;border:0;padding:0;font:inherit;color:var(--accent);font-weight:600;text-decoration:underline;text-underline-offset:2px}
 .banner.dv b{display:block;margin-bottom:4px}.banner.dv>div{margin-top:3px}.banner.dv .badge{vertical-align:middle}
 .dvnote{color:var(--muted);font-size:.78rem;margin-top:6px!important}
@@ -495,6 +528,7 @@ body{font:16px/1.4 var(--font-body);-webkit-font-smoothing:antialiased;letter-sp
     <div class="fab" id="fab">
       <button id="open-lines" data-openpanel="lines"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span data-i18n="lines">Lines</span></button>
       <button id="open-stops" data-openpanel="stops"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10z"/><circle cx="12" cy="11" r="2.2"/></svg><span data-i18n="stops">Stops</span></button>
+      <button id="open-plan" data-openpanel="plan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="19" r="2.2"/><circle cx="18" cy="5" r="2.2"/><path d="M8.2 19H15a3.5 3.5 0 0 0 0-7H9a3.5 3.5 0 0 1 0-7h6.8"/></svg><span data-i18n="plan">Plan</span></button>
     </div>
     <div class="hint" id="hint" hidden role="status"><span data-i18n="pickHint">Choose your lines to see them on the map</span><button class="x" id="hintx" data-i18n-aria="close" aria-label="Close"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
     <div class="selchip" id="selchip" hidden></div>
@@ -502,7 +536,7 @@ body{font:16px/1.4 var(--font-body);-webkit-font-smoothing:antialiased;letter-sp
     <main class="panel" id="panel" aria-label="Lines and stops" data-i18n-aria="panelAria" hidden>
       <div class="pbar"><span class="grabber" aria-hidden="true"></span>
         <button class="ibtn grab" id="grow" aria-label="Expand panel"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m6 15 6-6 6 6"/></svg></button>
-        <div class="seg" role="group" aria-label="Section" data-i18n-aria="section"><button id="tab-lines" data-tab="lines" aria-pressed="true" data-i18n="lines">Lines</button><button id="tab-stops" data-tab="stops" aria-pressed="false" data-i18n="stops">Stops</button></div>
+        <div class="seg" role="group" aria-label="Section" data-i18n-aria="section"><button id="tab-lines" data-tab="lines" aria-pressed="true" data-i18n="lines">Lines</button><button id="tab-stops" data-tab="stops" aria-pressed="false" data-i18n="stops">Stops</button><button id="tab-plan" data-tab="plan" aria-pressed="false" data-i18n="plan">Plan</button></div>
         <button class="ibtn" id="close-panel" aria-label="Close panel" data-i18n-aria="close"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
       </div>
       <div class="view" id="view"></div>
@@ -743,6 +777,7 @@ try{if(localStorage.getItem('burgosbus-hinted'))firstVisit=false}catch(e){}
    every line serving that stop. Those extra lines are never written to `active`, so leaving the
    stop view drops them again while lines switched on beforehand stay on. */
 function shownLines(){
+  if(planOn()) return new Set();
   const s=new Set(active); const top=st.stack[st.stack.length-1];
   if(st.panel&&top&&top.kind==='stop') stopRoutes[top.s].forEach(r=>s.add(r));
   return s;
@@ -868,9 +903,11 @@ function render(keepScroll){
        chips you've scrolled sideways. */
     const chipsX=keepScroll?[...view.querySelectorAll('.chips')].map(c=>c.scrollLeft):[];
     if(keepScroll) view.classList.remove('nav-push','nav-pop');
-    if(top&&top.kind==='line') view.innerHTML=lineView(top);
+    if(top&&top.kind==='trip') view.innerHTML=tripView(top);
+    else if(top&&top.kind==='line') view.innerHTML=lineView(top);
     else if(top&&top.kind==='stop') view.innerHTML=stopView(top);
     else if(st.tab==='lines') view.innerHTML=linesView();
+    else if(st.tab==='plan') view.innerHTML=planView();
     else view.innerHTML=stopsView();
     if(keepScroll){ view.scrollTop=y; view.querySelectorAll('.chips').forEach((c,i)=>{ if(chipsX[i]) c.scrollLeft=chipsX[i]; }); }
     /* iOS-style navigation: deeper slides in from the right, back returns from the left */
@@ -1300,7 +1337,10 @@ function initMap(){
   map.on('popupclose',e=>{if(e.popup._stop!=null&&e.popup._stop===popupStop){popupStop=null;markSel()}
     if(e.popup._source&&e.popup._source===busFocusSrc){ busFocusSrc=null; setBusFocus(null); }});
   map.on('zoomend',drawArrows);
-  map.on('click',()=>{ if(st.panel&&!wide()&&st.full){st.full=false;render(true)} });
+  map.on('click',e=>{
+    if(plan.pick){ const which=plan.pick; plan.pick=null; st.panel=true; st.tab='plan'; st.stack=[];
+      loadPlaces().then(()=>setPlace(which,{t:'pin',name:nameNear(e.latlng.lat,e.latlng.lng),lat:e.latlng.lat,lon:e.latlng.lng})); return; }
+    if(st.panel&&!wide()&&st.full){st.full=false;render(true)} });
 }
 /* Double tap (or double click) zooms in one level, keeping the tapped point under your finger, as in
    Apple and Google Maps. Leaflet's own version listens for dblclick, which iPhone Safari doesn't send
@@ -1335,10 +1375,11 @@ function syncMap(){
   if(!map) return;
   const sel=selection();
   const shown=shownLines();
-  const key=sel.r+'|'+sel.pid+'|'+st.day+'|'+[...shown].sort((a,b)=>a-b).join(',');
+  const key=sel.r+'|'+sel.pid+'|'+st.day+'|'+[...shown].sort((a,b)=>a-b).join(',')+'|'+(planOn()?'plan':'');
   const chip=$('#selchip');
   if(sel.r>=0&&!st.panel){const x=R[sel.r];chip.hidden=false;chip.innerHTML=`<button data-openpanel="current" style="display:flex;align-items:center;gap:8px;min-width:0">${badge(sel.r)}<span class="nm">${esc(x.name)}</span></button><button class="x" data-clearsel aria-label="${T('showAllLines')}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>`}
   else chip.hidden=true;
+  if(planOn()||planLayer) drawPlan();
   if(key!==drawnKey){
     const prevR=drawnKey==null?null:+drawnKey.split('|')[0];
     drawnKey=key; drawRoutes(sel);
@@ -1455,7 +1496,7 @@ function drawRoutes(sel){
   const order=R.map(r=>r.i).filter(i=>i!==r0&&shown.has(i)); if(r0>=0) order.push(r0);
   const selP=P.find(q=>q.id===sel.pid);
   /* the rest of the network, thin and grey, so the map always shows what the buses cover */
-  const greySeen=new Set(), greyOp=r0>=0?.16:(isDarkNow()?.42:.5);
+  const pl=planOn(), greySeen=new Set(), greyOp=r0>=0||pl?.16:(isDarkNow()?.42:.5);  /* faint behind a planned trip */
   for(const x of R){ if(shown.has(x.i)) continue;
     for(const p of routeP[x.i]){ if(greySeen.has(p.sh)) continue; greySeen.add(p.sh);
       L.polyline(SH[p.sh].pts,{color:'#8E8E93',weight:2.5,opacity:greyOp,interactive:false}).addTo(baseLayer); } }
@@ -1473,7 +1514,7 @@ function drawRoutes(sel){
   const css=getComputedStyle(document.documentElement);
   const surf=css.getPropertyValue('--surface').trim()||'#fff', ink=css.getPropertyValue('--ink').trim()||'#000', mut=css.getPropertyValue('--muted').trim()||'#777';
   for(const i of allStops){
-    const on=lineStops.has(i), faded=r0>=0&&!on;
+    const on=lineStops.has(i), faded=(r0>=0||pl)&&!on;
     const base=on?6:(faded?3.5:4.5);
     const m=L.circleMarker([S[i].lat,S[i].lon],{radius:base,color:on?R[r0].col:(faded?mut:ink),weight:on?3:1.5,opacity:faded?.55:1,fillColor:surf,fillOpacity:faded?.7:1});
     m._b={base,weight:on?3:1.5,on,faded,fill:surf,col:on?R[r0].col:(faded?mut:ink)};
@@ -1991,6 +2032,8 @@ async function livePoll(onlyNew){
 let kickTimer=0;
 function liveKick(){ clearTimeout(kickTimer); kickTimer=setTimeout(()=>livePoll(true),250); }
 
+__PLANNER__
+
 /* ---------- day picker & clock ---------- */
 function buildDays(){
   const now=madridNow(); const sel=$('#day');
@@ -2123,7 +2166,18 @@ function openStop(s){st.panel=true;stopWait.delete(s);st.stack.push({kind:'stop'
 
 document.addEventListener('click',e=>{
   const t=e.target.closest('button,a'); if(!t) return;
-  if(t.dataset.tab){st.tab=t.dataset.tab;st.stack=[];render();view.scrollTop=0;return}
+  if(t.dataset.tab){st.tab=t.dataset.tab;st.stack=[];if(st.tab==='plan')loadPlaces();render();view.scrollTop=0;return}
+  if(t.dataset.pfield){plan.edit=t.dataset.pfield;plan.q='';render();loadPlaces().then(()=>{if(plan.edit){const r=$('#res');if(r)r.innerHTML=planSugs()}});setTimeout(()=>{const q=$('#q-plan');if(q)q.focus()},60);return}
+  if(t.hasAttribute('data-pcancel')){plan.edit=null;render();return}
+  if(t.hasAttribute('data-pswap')){[plan.from,plan.to]=[plan.to,plan.from];plan.opts=null;if(plan.from&&plan.to)runPlan();else render();syncMap();return}
+  if(t.dataset.pleave==='now'){plan.leave=null;runPlan();return}
+  if(t.dataset.psug!=null){const which=plan.edit,v=t.dataset.psug;
+    if(v==='map'){plan.pick=which;plan.edit=null;st.panel=false;render();toast(T(which==='from'?'tapStart':'tapEnd'));return}
+    if(v==='me'){ const use=()=>setPlace(which,{t:'me',name:T('myLoc'),lat:meLL[0],lon:meLL[1]});
+      if(meLL) use(); else navigator.geolocation.getCurrentPosition(pos=>{placeMe([pos.coords.latitude,pos.coords.longitude],pos.coords.accuracy);startWatch();use()},err=>toast(T(err&&err.code===1?'locOff':'locFail')),{enableHighAccuracy:true,timeout:10000,maximumAge:5000});
+      return}
+    const x=planSugs.last&&planSugs.last[+v]; if(x) setPlace(which,x); return}
+  if(t.dataset.popt!=null){const i=+t.dataset.popt;plan.sel=i;st.stack.push({kind:'trip',i});render();view.scrollTop=0;syncMap();return}
   if(t.hasAttribute('data-back')){st.stack.pop();render();return}
   if(t.hasAttribute('data-share')){shareCurrent();return}
   if(t.dataset.favLine!=null){toggleFav('lines',+t.dataset.favLine,t);return}
@@ -2157,9 +2211,11 @@ function onSearch(e){
   const res=$('#res'); if(!res) return;
   if(e.target.id==='q-lines'){st.q=e.target.value;res.innerHTML=linesResults(ctx())}
   if(e.target.id==='q-stops'){st.sq=e.target.value;res.innerHTML=stopsResults()}
+  if(e.target.id==='q-plan'){plan.q=e.target.value;res.innerHTML=planSugs()}
 }
 view.addEventListener('input',onSearch);
 view.addEventListener('compositionend',onSearch);
+view.addEventListener('change',e=>{ if(e.target.id==='ptime'&&e.target.value){ const [hh,mm]=e.target.value.split(':').map(Number); plan.leave=hh*3600+mm*60; runPlan(); } });
 $('#day').addEventListener('change',e=>{st.day=+e.target.value;render(true);drawBuses();refreshStopPopup()});
 
 applyStatic(); buildDays(); tickClock(); updHdr(); initMap(); applyStatic();

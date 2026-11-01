@@ -90,6 +90,16 @@ def main(src):
     except OSError:
         map_version = '0'
     page = page.replace('__MAP_VERSION__', map_version)
+    # The route planner (tools/planner.js) and the fingerprint of its search index (map/places.json)
+    page = page.replace('__PLANNER__', open(os.path.join(HERE, 'planner.js'), encoding='utf-8').read())
+    places = os.path.join(ROOT, 'map', 'places.json')
+    if not os.path.exists(places):
+        subprocess.run([sys.executable, '-I', os.path.join(HERE, 'build_places.py')], check=False)
+    try:
+        with open(places, 'rb') as f:
+            page = page.replace('__PLACES_VERSION__', hashlib.sha256(f.read()).hexdigest()[:10])
+    except OSError:
+        page = page.replace('__PLACES_VERSION__', '0')
     i18n = open(os.path.join(HERE, 'i18n.js'), encoding='utf-8').read()
     i18n = json.loads(re.sub(r'^\s*/\*.*?\*/', '', i18n, flags=re.S))
     keys = set(i18n['en'])

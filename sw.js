@@ -4,7 +4,7 @@
    (map/burgos.pmtiles) that the page reads in small pieces; every piece you've needed is kept
    (up to PIECE_MAX, oldest dropped first), so places you've seen load instantly and still show
    offline, without ever downloading the whole file. */
-const CACHE = 'burgosbus-v4';
+const CACHE = 'burgosbus-v5';
 const TILES = 'burgosbus-map2';   /* renamed to drop pieces saved with an ETag (see piece()) */
 const PIECE_MAX = 3000;   /* pieces are small (a few KB each), so this is roughly 15 MB at most */
 const PAGE = './';
@@ -46,6 +46,15 @@ self.addEventListener('fetch', e => {
   /* Pieces of the street map: cache first. */
   if (url.origin === location.origin && url.pathname.endsWith('/map/burgos.pmtiles') && req.headers.get('range')) {
     e.respondWith(piece(req, url)); return;
+  }
+
+  /* The route planner's search index: cache first (its address changes whenever it's rebuilt). */
+  if (url.origin === location.origin && url.pathname.endsWith('/map/places.json')) {
+    e.respondWith(caches.match(req).then(hit => hit || fetch(req).then(res => {
+      if (res.ok) { const copy = res.clone(); caches.open(CACHE).then(c => c.put(req, copy)); }
+      return res;
+    })));
+    return;
   }
 
   /* Leaflet and icons: cache first. */
