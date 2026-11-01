@@ -19,8 +19,8 @@
 /* Layout: the map is the app. Header, buttons, panels and pop-ups float over it as translucent
    material (Apple's approach); lists inside are iOS inset-grouped. Colours are iOS system colours. */
 :root{
-  --bg:#F2F2F7; --surface:#FFFFFF; --sunk:rgba(118,118,128,.12); --ink:#000000; --muted:rgba(60,60,67,.62); --rule:rgba(60,60,67,.22);
-  --accent:#007AFF; --accent-ink:#FFFFFF; --live:#28A745; --warn:#C93400; --star:#FF9F0A; --sel:#FF9500;
+  --bg:#F2F2F7; --surface:#FFFFFF; --sunk:rgba(118,118,128,.12); --ink:#000000; --muted:rgba(60,60,67,.78); --rule:rgba(60,60,67,.22);
+  --accent:#007AFF; --accent-fill:#006EDB; --accent-ink:#FFFFFF; --live:#1A7F37; --warn:#C93400; --star:#FF9F0A; --sel:#FF9500;
   --glass:rgba(249,249,251,.74); --glass-solid:#F9F9FB; --glass-edge:rgba(255,255,255,.55); --press:rgba(60,60,67,.10);
   --seg-on:#FFFFFF; --seg-shadow:0 3px 8px rgba(0,0,0,.12),0 3px 1px rgba(0,0,0,.04);
   --font-display:-apple-system,"SF Pro Display",system-ui,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
@@ -31,14 +31,14 @@
   --hdr:60px;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
-  --bg:#000000; --surface:#1C1C1E; --sunk:rgba(118,118,128,.24); --ink:#FFFFFF; --muted:rgba(235,235,245,.62); --rule:rgba(84,84,88,.6);
-  --accent:#0A84FF; --accent-ink:#FFFFFF; --live:#30D158; --warn:#FF9F0A; --star:#FFD60A; --sel:#FF9F0A;
+  --bg:#000000; --surface:#1C1C1E; --sunk:rgba(118,118,128,.24); --ink:#FFFFFF; --muted:rgba(235,235,245,.7); --rule:rgba(84,84,88,.6);
+  --accent:#0A84FF; --accent-fill:#0071E3; --accent-ink:#FFFFFF; --live:#30D158; --warn:#FF9F0A; --star:#FFD60A; --sel:#FF9F0A;
   --glass:rgba(30,30,32,.72); --glass-solid:#1E1E20; --glass-edge:rgba(255,255,255,.08); --press:rgba(235,235,245,.12);
   --seg-on:#636366; --seg-shadow:0 3px 8px rgba(0,0,0,.3);
   --shadow:none; --float:0 8px 32px rgba(0,0,0,.5),0 1px 3px rgba(0,0,0,.4); color-scheme:dark}}
 :root[data-theme="dark"]{
-  --bg:#000000; --surface:#1C1C1E; --sunk:rgba(118,118,128,.24); --ink:#FFFFFF; --muted:rgba(235,235,245,.62); --rule:rgba(84,84,88,.6);
-  --accent:#0A84FF; --accent-ink:#FFFFFF; --live:#30D158; --warn:#FF9F0A; --star:#FFD60A; --sel:#FF9F0A;
+  --bg:#000000; --surface:#1C1C1E; --sunk:rgba(118,118,128,.24); --ink:#FFFFFF; --muted:rgba(235,235,245,.7); --rule:rgba(84,84,88,.6);
+  --accent:#0A84FF; --accent-fill:#0071E3; --accent-ink:#FFFFFF; --live:#30D158; --warn:#FF9F0A; --star:#FFD60A; --sel:#FF9F0A;
   --glass:rgba(30,30,32,.72); --glass-solid:#1E1E20; --glass-edge:rgba(255,255,255,.08); --press:rgba(235,235,245,.12);
   --seg-on:#636366; --seg-shadow:0 3px 8px rgba(0,0,0,.3);
   --shadow:none; --float:0 8px 32px rgba(0,0,0,.5),0 1px 3px rgba(0,0,0,.4); color-scheme:dark}
@@ -989,6 +989,7 @@ body{font:16px/1.4 var(--font-body);-webkit-font-smoothing:antialiased;letter-sp
 .seg button{border-radius:7px;font-weight:590;color:var(--ink);opacity:.9;padding:8px 8px}
 .seg button[aria-pressed="true"]{background:var(--seg-on);box-shadow:var(--seg-shadow);opacity:1}
 .seg button span{color:var(--muted)}
+.seg button[aria-pressed="true"] span{color:inherit;opacity:.8}
 .pbar .seg button{padding:6px 8px}
 .chip{border:0;background:var(--sunk);color:var(--ink);font-weight:590;padding:7px 12px}
 .chip[aria-pressed="true"]{background:var(--ink);color:var(--surface)}
@@ -997,7 +998,7 @@ body{font:16px/1.4 var(--font-body);-webkit-font-smoothing:antialiased;letter-sp
 .badge{font-family:var(--font-display);font-weight:700;border-radius:7px;letter-spacing:-.01em}
 .badge.off{background:var(--sunk)!important;box-shadow:none;color:var(--muted)!important}
 .tm{font-family:var(--font-display);border-radius:8px}
-.tm.next{background:var(--accent);color:#fff}
+.tm.next{background:var(--accent-fill);color:#fff}
 .dep .when{font-family:var(--font-display);font-weight:600;letter-spacing:-.02em}
 .full .hr b,.full .hr span{font-family:var(--font-display)}
 /* detail header: part of the material, sticks while the list scrolls under it */
@@ -1140,14 +1141,14 @@ body{font:16px/1.4 var(--font-body);-webkit-font-smoothing:antialiased;letter-sp
     <div class="hint" id="hint" hidden role="status"><span data-i18n="pickHint">Choose your lines to see them on the map</span><button class="x" id="hintx" data-i18n-aria="close" aria-label="Close"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
     <div class="selchip" id="selchip" hidden></div>
     <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
-    <aside class="panel" id="panel" aria-label="Lines and stops" data-i18n-aria="panelAria" hidden>
+    <main class="panel" id="panel" aria-label="Lines and stops" data-i18n-aria="panelAria" hidden>
       <div class="pbar"><span class="grabber" aria-hidden="true"></span>
         <button class="ibtn grab" id="grow" aria-label="Expand panel"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m6 15 6-6 6 6"/></svg></button>
         <div class="seg" role="group" aria-label="Section" data-i18n-aria="section"><button id="tab-lines" data-tab="lines" aria-pressed="true" data-i18n="lines">Lines</button><button id="tab-stops" data-tab="stops" aria-pressed="false" data-i18n="stops">Stops</button></div>
         <button class="ibtn" id="close-panel" aria-label="Close panel" data-i18n-aria="close"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
       </div>
-      <main class="view" id="view"></main>
-    </aside>
+      <div class="view" id="view"></div>
+    </main>
     <div class="langback" id="langback" hidden></div>
     <div class="langsheet" id="langsheet" role="dialog" aria-modal="true" aria-labelledby="langtitle" hidden>
       <div class="lshead"><h3 id="langtitle"></h3><button class="ibtn" id="langclose" aria-label="Close"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
@@ -1164,8 +1165,8 @@ body{font:16px/1.4 var(--font-body);-webkit-font-smoothing:antialiased;letter-sp
 (function(){
 "use strict";
 const STANDALONE = true;
-const BUILD = '01 Nov 18:12';
-const BUILD_ID = '1793553154';
+const BUILD = '01 Nov 18:14';
+const BUILD_ID = '1793553296';
 /* The street map is the site's own: an OpenStreetMap extract of Burgos only (map/burgos.pmtiles, built by
    .github/workflows/build-map.yml), drawn on the phone by protomaps-leaflet. MAP_BOUNDS is the box that file
    covers; the map can't be dragged or zoomed out beyond it. Keep it in step with BBOX in that workflow.
@@ -1193,7 +1194,14 @@ const SHARE = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" strok
 const BACK = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m15 5-7 7 7 7"/></svg>';
 
 /* ---------- data prep ---------- */
-const R = D.routes.map((r,i)=>({i, n:r[0], name:r[1], col:'#'+r[2], txt:'#'+r[3]}));
+/* Badge colour: the line's official colour, nudged darker (or lighter, for dark text) only as far as needed
+   for its number to meet the 4.5:1 contrast that WCAG asks of text. Routes on the map keep the exact colour. */
+const lumOf=h=>{const c=[1,3,5].map(i=>parseInt(h.substr(i,2),16)/255).map(x=>x<=.03928?x/12.92:((x+.055)/1.055)**2.4);return .2126*c[0]+.7152*c[1]+.0722*c[2]};
+const contrastOf=(a,b)=>{const x=lumOf(a),y=lumOf(b);return (Math.max(x,y)+.05)/(Math.min(x,y)+.05)};
+const readable=(bg,fg)=>{let c=bg;const k=lumOf(fg)>.5?.94:1.06;
+  for(let i=0;i<40&&contrastOf(c,fg)<4.5;i++) c='#'+[1,3,5].map(j=>Math.max(0,Math.min(255,Math.round(parseInt(c.substr(j,2),16)*k+(k>1?4:0)))).toString(16).padStart(2,'0')).join('');
+  return c};
+const R = D.routes.map((r,i)=>({i, n:r[0], name:r[1], col:'#'+r[2], txt:'#'+r[3], bcol:readable('#'+r[2],'#'+r[3])}));
 const S = D.stops.map((s,i)=>({i, code:s[0], name:s[1], lat:s[2], lon:s[3]}));
 function decodePoly(str){let i=0,lat=0,lng=0;const out=[];while(i<str.length){let b,sh=0,res=0;do{b=str.charCodeAt(i++)-63;res|=(b&31)<<sh;sh+=5}while(b>=32);lat+=(res&1)?~(res>>1):(res>>1);sh=0;res=0;do{b=str.charCodeAt(i++)-63;res|=(b&31)<<sh;sh+=5}while(b>=32);lng+=(res&1)?~(res>>1):(res>>1);out.push([lat/1e5,lng/1e5])}return out}
 const SH = D.shapes.map(([poly,dd])=>{const pts=decodePoly(poly);const cum=[];let a=0;dd.forEach(d=>{a+=d;cum.push(a)});return {pts,cum}});
@@ -1428,7 +1436,7 @@ function uniDir(r,c){
   return a.term<=b.term?dirs[0]:dirs[1];
 }
 function mainPattern(pats,c){let best=null,bn=-1;for(const p of pats){const n=tripsOn(p,c.key).length*1000+p.s.length;if(n>bn){bn=n;best=p}}return best}
-function badge(r,cls=''){const x=R[r];return `<span class="badge ${cls}" style="background:${x.col};color:${x.txt}">${esc(x.n)}</span>`}
+function badge(r,cls=''){const x=R[r];return `<span class="badge ${cls}" style="background:${x.bcol};color:${x.txt}">${esc(x.n)}</span>`}
 
 /* ---------- views ---------- */
 const view=$('#view');
@@ -2530,7 +2538,7 @@ function applyStatic(){
   document.documentElement.lang=lang;
   document.querySelectorAll('[data-i18n]').forEach(e=>e.textContent=T(e.dataset.i18n));
   document.querySelectorAll('[data-i18n-aria]').forEach(e=>e.setAttribute('aria-label',T(e.dataset.i18nAria)));
-  const lb=$('#langbtn'); lb.innerHTML=`${flagHtml(lang)}<span>${lang.toUpperCase()}</span>`; lb.setAttribute('aria-label',`${T('language')}: ${I18N[lang].name}`);
+  const lb=$('#langbtn'); lb.innerHTML=`${flagHtml(lang)}<span>${lang.toUpperCase()}</span>`; lb.setAttribute('aria-label',`${lang.toUpperCase()}, ${T('language')}: ${I18N[lang].name}`);
   $('#langtitle').textContent=T('language'); $('#q-lang').placeholder=T('searchLang'); $('#langclose').setAttribute('aria-label',T('close'));
   document.querySelectorAll('.locate').forEach(a=>{a.title=T('locate');a.setAttribute('aria-label',T('locate'))});
   paintThemeBtn();
