@@ -28,7 +28,7 @@ SKIP_KINDS = {'path', 'rail', 'ferry', 'aerialway', 'runway', 'taxiway'}
 # One-way streets: driving them the wrong way costs this much more (not forbidden: buses use contraflow
 # bus lanes, which the map data doesn't mark). This keeps routes on the right side of dual carriageways
 # and going the right way round roundabouts.
-WRONG_WAY = lambda d: d * 4 + 40
+WRONG_WAY = lambda d: d * 15 + 200
 
 
 # ---------- reading the map file ----------
@@ -194,6 +194,7 @@ class Roads:
         from pmtiles.reader import Reader, MmapSource
         self.adj = defaultdict(dict)      # node -> {node: cost of driving that way, metres}
         self.L = {}                       # (node, node) sorted -> length, metres
+        self.slow = {}                    # (node, node) sorted -> extra cost factor (service roads)
         self.xy = {}                      # node -> (x, y) metres
         lat0, lon0, lat1, lon1 = bbox
         xa, ya = ll_to_world(lat1, lon0); xb, yb = ll_to_world(lat0, lon1)
@@ -205,12 +206,76 @@ class Roads:
                     if not data: continue
                     if data[:2] == b'\x1f\x8b': data = gzip.decompress(data)
                     self.add_tile(tx, ty, data)
+        self.join_tile_edges()
         self.grid = defaultdict(list)     # 40 m cells -> edges
         for (u, v) in self.L:
                     (x1, y1), (x2, y2) = self.xy[u], self.xy[v]
                     for cx in range(int(min(x1, x2) // 40), int(max(x1, x2) // 40) + 1):
                         for cy in range(int(min(y1, y2) // 40), int(max(y1, y2) // 40) + 1):
                             self.grid[(cx, cy)].append((u, v))
+
+    def join_tile_edges(self, tol=2.0):
+        """Each map tile stores its own copy of a road, rounded to its own grid, so where a road crosses from
+        one tile to the next the two halves end a few centimetres apart and the road is broken there. Ends
+        that lie on a tile edge are joined to any other end within `tol` metres."""
+        def on_edge(n):
+            x, y = n[0] / 2 % 4096, n[1] / 2 % 4096
+            return min(x, 4096 - x, y, 4096 - y) < 2
+        ends = [n for n in self.adj if on_edge(n)]
+        cell = defaultdict(list)
+        for n in ends:
+            x, y = self.xy[n]; cell[(int(x // tol), int(y // tol))].append(n)
+        parent = {}
+        def find(n):
+            while parent.get(n, n) != n: n = parent[n]
+            return n
+        for n in ends:
+            x, y = self.xy[n]
+            for gx in range(int(x // tol) - 1, int(x // tol) + 2):
+                for gy in range(int(y // tol) - 1, int(y // tol) + 2):
+                    for k in cell.get((gx, gy), ()):
+                        if k != n and math.dist(self.xy[k], (x, y)) <= tol:
+                            a, b = find(n), find(k)
+                            if a != b: parent[b] = a
+        moved = 0
+        for n in [n for n in list(self.adj) if find(n) != n]:
+            r = find(n); moved += 1
+            for v in list(self.adj[n]):                    # every street piece n-v becomes r-v
+                out_c, in_c = self.adj[n].get(v), self.adj[v].pop(n, None)
+                key = (min(n, v), max(n, v)); self.L.pop(key, None); sl = self.slow.pop(key, None)
+                if v == r: continue
+                nk = (min(r, v), max(r, v)); self.L[nk] = math.dist(self.xy[r], self.xy[v])
+                if sl: self.slow[nk] = sl
+                if out_c is not None: self.adj[r][v] = min(out_c, self.adj[r].get(v, 1e18))
+                if in_c is not None: self.adj[v][r] = min(in_c, self.adj[v].get(r, 1e18))
+            del self.adj[n]
+        # Ends further apart: each tile also simplifies a road's shape a little differently, so the two halves
+        # can cross the tile edge several metres apart. Connect a remaining dead end on a tile edge to the
+        # nearest point within 12 m on the far side of that edge (or on the edge itself).
+        near = defaultdict(list)
+        for n in self.adj:
+            x, y = self.xy[n]; near[(int(x // 12), int(y // 12))].append(n)
+        def side(n, axis, line):
+            return (n[axis] / 2 - line)
+        for n in [n for n in self.adj if len(self.adj[n]) == 1 and on_edge(n)]:
+            X, Y = n[0] / 2, n[1] / 2
+            ex, ey = X % 4096, Y % 4096
+            axis = 0 if min(ex, 4096 - ex) < min(ey, 4096 - ey) else 1
+            line = round((X if axis == 0 else Y) / 4096) * 4096
+            mine = side(next(iter(self.adj[n])), axis, line)       # which side n's own road comes from
+            x, y = self.xy[n]; best = None
+            for gx in range(int(x // 12) - 1, int(x // 12) + 2):
+                for gy in range(int(y // 12) - 1, int(y // 12) + 2):
+                    for k in near.get((gx, gy), ()):
+                        if k == n or k in self.adj[n]: continue
+                        sk = side(k, axis, line)
+                        if sk * mine > 0 and abs(sk) > 1: continue     # same side: a different road
+                        d = math.dist(self.xy[k], (x, y))
+                        if d <= 12 and (best is None or d < best[0]): best = (d, k)
+            if best:
+                d, k = best
+                self.adj[n][k] = self.adj[k][n] = d; self.L[(min(n, k), max(n, k))] = d; moved += 1
+        self.joined = moved
 
     def node(self, X, Y):
         k = (round(X * 2), round(Y * 2))   # half a map unit (~10 cm): tiles meet exactly
@@ -242,6 +307,7 @@ class Roads:
                         self.adj[u][v] = min(cf, self.adj[u].get(v, 1e18))
                         self.adj[v][u] = min(cb, self.adj[v].get(u, 1e18))
                         self.L[(min(u, v), max(u, v))] = d
+                        if props.get('kind_detail') == 'service': self.slow[(min(u, v), max(u, v))] = 1.5
 
     def f(self, a, b):
         """cost per metre of driving the street segment a -> b"""
@@ -291,15 +357,23 @@ def path_to(prev, n):
 
 # ---------- matching one route ----------
 #
-# The outline is cut into stretches of about ANCHOR metres. Each stretch end ("anchor") gets a few
-# candidate points on nearby roads, and consecutive anchors are joined by the cheapest drive along the
-# roads, where a street costs more the further it strays from the outline, and much more when driven
-# against the outline's direction (that keeps each direction on its own carriageway) or against a one-way
-# street. The best chain of candidates is picked with the Viterbi algorithm. Sparse anchors plus a
-# corridor-shaped cost give one continuous drive, without the zig-zags of matching every point.
+# A route is found the way a bus would drive it, following these rules:
+#   * one continuous drive along the roads: never jumping between roads or across a block;
+#   * no U-turns in the street (only at a dead end, or by going round a roundabout);
+#   * one-way streets and roundabouts in the legal direction (the opposite way costs so much it is only
+#     used where the city's outline leaves no other choice, e.g. a contraflow bus lane);
+#   * sharp turns cost a little, so the natural line along a road is preferred over zig-zags;
+#   * service roads (car parks, lay-bys) cost a little more than streets.
+# Within those rules, it takes the drive that best follows the city's outline: the outline is cut into
+# stretches of about ANCHOR metres; each stretch end ("anchor") gets candidate points on nearby roads,
+# facing the way the outline goes; consecutive anchors are joined by the cheapest legal drive, where a
+# street costs more the further it strays from the outline and when it runs against the outline's
+# direction; the best chain is picked with the Viterbi algorithm. Where no drive fits a narrow corridor
+# around the outline, wider ones are tried before the outline itself is used.
 
+BREAKS = []                 # where no legal drive was found (for checking)
 ANCHOR = 120                # metres between anchors
-CORRIDOR = 45               # metres: streets further than this from the outline aren't used
+CORRIDORS = (45, 110, 260)  # metres: corridors tried in turn
 DEV = 11                    # metres: straying this far from the outline doubles a street's cost
 AGAINST = 6                 # cost factor for driving against the outline's direction
 
@@ -318,82 +392,112 @@ def resample(xy, cum, step):
     return out
 
 
-class Corridor:
-    """cost of driving each street along one stretch of outline"""
-    def __init__(self, roads, segs):
-        self.r, self.segs, self.cache = roads, segs, {}
+def seg_near(segs, p):
+    best = (1e18, (0.0, 0.0))
+    for a, b in segs:
+        dx, dy = b[0] - a[0], b[1] - a[1]; L2 = dx * dx + dy * dy
+        t = max(0.0, min(1.0, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / L2)) if L2 else 0.0
+        d = math.dist(p, (a[0] + t * dx, a[1] + t * dy))
+        if d < best[0]: best = (d, (dx, dy))
+    return best
 
-    def near(self, p):
-        best = (1e18, None)
-        for a, b in self.segs:
-            dx, dy = b[0] - a[0], b[1] - a[1]; L2 = dx * dx + dy * dy
-            t = max(0.0, min(1.0, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / L2)) if L2 else 0.0
-            d = math.dist(p, (a[0] + t * dx, a[1] + t * dy))
-            if d < best[0]: best = (d, (dx, dy))
-        return best
+
+class Corridor:
+    """cost of driving each street piece along one stretch of outline, within `width` metres of it"""
+    def __init__(self, roads, segs, width):
+        self.r, self.segs, self.w, self.cache = roads, segs, width, {}
 
     def cost(self, u, v):
         k = (u, v)
         if k in self.cache: return self.cache[k]
-        r = self.r; pu, pv = r.xy[u], r.xy[v]; L = r.L[(min(u, v), max(u, v))]
+        r = self.r; pu, pv = r.xy[u], r.xy[v]; key = (min(u, v), max(u, v)); L = r.L[key]
         mid = ((pu[0] + pv[0]) / 2, (pu[1] + pv[1]) / 2)
-        d = max(self.near(pu)[0], self.near(mid)[0], self.near(pv)[0])
-        if d > CORRIDOR:
+        dm, (ox, oy) = seg_near(self.segs, mid)
+        d = max(seg_near(self.segs, pu)[0], dm, seg_near(self.segs, pv)[0])
+        if d > self.w:
             c = None
         else:
-            _, (ox, oy) = self.near(mid); ex, ey = pv[0] - pu[0], pv[1] - pu[1]
-            on, en = math.hypot(ox, oy), math.hypot(ex, ey)
+            ex, ey = pv[0] - pu[0], pv[1] - pu[1]; on, en = math.hypot(ox, oy), math.hypot(ex, ey)
             dot = (ox * ex + oy * ey) / (on * en) if on and en else 1
-            c = L * (1 + (d / DEV) ** 2) * (AGAINST if dot < -0.3 else 1) * (r.adj[u][v] / L if L else 1)
+            c = L * (1 + (min(d, 45) / DEV) ** 2 + max(0, d - 45) / 10) * (AGAINST if dot < -0.3 else 1) \
+                * (r.adj[u][v] / L if L else 1) * r.slow.get(key, 1)
         self.cache[k] = c
         return c
 
 
-def guided(roads, cor, a, bs, cutoff):
-    """cheapest corridor drives from candidate a to each candidate in bs: [(cost, [points]) or None]"""
+def turn_cost(roads, a, b, c):
+    """extra cost (metres) of turning at b, coming from a and going on to c"""
+    (ax, ay), (bx, by), (cx, cy) = roads.xy[a], roads.xy[b], roads.xy[c]
+    ux, uy, vx, vy = bx - ax, by - ay, cx - bx, cy - by; lu, lv = math.hypot(ux, uy), math.hypot(vx, vy)
+    if not lu or not lv: return 0
+    cosang = (ux * vx + uy * vy) / (lu * lv)
+    return 0 if cosang > 0.87 else 6 if cosang > 0.2 else 20 if cosang > -0.6 else 60
+
+
+def drives(roads, cor, a, bs, cutoff):
+    """cheapest legal drives from candidate a to each candidate in bs, as [(cost, [points]) or None].
+    Candidates are (distance, (from, to), t, point): a point at fraction t along the directed piece from->to.
+    The search runs over directed pieces, so a U-turn (from->to followed by to->from) can be refused."""
     _, (u1, v1), t1, q1 = a
-    L1 = roads.L[(u1, v1)]
-    def part(x, y, frac):                       # cost of driving `frac` of street x->y
-        c = cor.cost(x, y); return None if c is None else c * frac
-    src = {}
-    for n, c in ((v1, part(u1, v1, 1 - t1)), (u1, part(v1, u1, t1))):
-        if c is not None: src[n] = c
-    targets = set()
-    for _, (u2, v2), _, _ in bs: targets |= {u2, v2}
-    dist = dict(src); prev = {}; h = [(d, n) for n, d in src.items()]; heapq.heapify(h); left = set(targets)
+    c0 = cor.cost(u1, v1)
+    out = [None] * len(bs)
+    if c0 is None: return out
+    start = (u1, v1); rest = c0 * (1 - t1)
+    want = {}
+    for i, (_, e, t2, q2) in enumerate(bs):
+        if e == start and t2 >= t1 - 1e-9:            # further along the same piece
+            out[i] = (c0 * (t2 - t1), [q1, q2])
+        else:
+            want.setdefault(e, []).append(i)
+    if not want: return out
+    dist = {start: rest}; prev = {}; h = [(rest, start)]; left = set(want)
     while h and left:
-        d, n = heapq.heappop(h)
-        if d > dist.get(n, 1e18) or d > cutoff: continue
-        left.discard(n)
-        for v in roads.adj[n]:
-            c = cor.cost(n, v)
+        d, e = heapq.heappop(h)
+        if d > dist.get(e, 1e18) or d > cutoff: continue
+        u, v = e
+        if e in left: left.discard(e)
+        nbrs = roads.adj[v]
+        for w in nbrs:
+            if w == u and len(nbrs) > 1: continue        # no U-turns except at a dead end
+            c = cor.cost(v, w)
             if c is None: continue
-            nd = d + c
-            if nd < dist.get(v, 1e18): dist[v] = nd; prev[v] = n; heapq.heappush(h, (nd, v))
-    out = []
-    for _, (u2, v2), t2, q2 in bs:
-        if (u1, v1) == (u2, v2) and t2 >= t1:   # further along the same street
-            c = part(u1, v1, t2 - t1)
-            if c is not None: out.append((c, [q1, q2])); continue
-        if (u1, v1) == (u2, v2) and t2 < t1:
-            c = part(v1, u1, t1 - t2)
-            if c is not None: out.append((c, [q1, q2])); continue
-        best = None
-        for n, x, frac in ((u2, v2, t2), (v2, u2, 1 - t2)):   # reach n, then drive n->q2
-            c = part(n, x, frac)
-            if n in dist and c is not None and (best is None or dist[n] + c < best[0]): best = (dist[n] + c, n)
-        if not best: out.append(None); continue
-        nodes = [best[1]]
-        while nodes[-1] in prev: nodes.append(prev[nodes[-1]])
-        out.append((best[0], [q1] + [roads.xy[n] for n in reversed(nodes)] + [q2]))
+            nd = d + c + turn_cost(roads, u, v, w)
+            ne = (v, w)
+            if nd < dist.get(ne, 1e18): dist[ne] = nd; prev[ne] = e; heapq.heappush(h, (nd, ne))
+    for e, idx in want.items():
+        if e not in dist: continue
+        ce = cor.cost(*e)
+        chain = [e]
+        while chain[-1] in prev: chain.append(prev[chain[-1]])
+        chain.reverse()                                    # start ... e
+        nodes = [x[1] for x in chain[:-1]]                 # the junctions passed through
+        for i in idx:
+            _, _, t2, q2 = bs[i]
+            # reaching e means arriving at its start node; then drive t2 of it (minus the full piece counted)
+            cost = dist[e] - ce + ce * t2
+            out[i] = (cost, [q1] + [roads.xy[n] for n in nodes] + [q2])
     return out
 
 
 def match(roads, pts, cum):
     xy = [m(*p) for p in pts]
     anchors = resample(xy, cum, ANCHOR)
-    fine = resample(xy, cum, 8)                 # the outline, finely, for the corridors
-    cands = [roads.candidates(p) for p, _, _ in anchors]
+    fine = resample(xy, cum, 8)
+
+    def heading(dc):                                       # outline direction around timetable distance dc
+        near = [p for p, d, _ in fine if abs(d - dc) <= 25]
+        if len(near) < 2: return (1.0, 0.0)
+        return (near[-1][0] - near[0][0], near[-1][1] - near[0][1])
+
+    def cands(i):
+        p, dc, _ = anchors[i]; hx, hy = heading(dc); out = []
+        for d, (u, v), t, q in roads.candidates(p):
+            ex, ey = roads.xy[v][0] - roads.xy[u][0], roads.xy[v][1] - roads.xy[u][1]
+            fwd = ((u, v), t) if ex * hx + ey * hy >= 0 else ((v, u), 1 - t)
+            out.append((d,) + fwd + (q,))
+        return out
+
+    C = [cands(i) for i in range(len(anchors))]
     out_pts, out_d = [], []
 
     def emit(seq, d0, d1):
@@ -403,42 +507,51 @@ def match(roads, pts, cum):
             if out_pts and math.dist(out_pts[-1], p) < 0.3: continue
             out_pts.append(p); out_d.append(d0 + (d1 - d0) * (l / L[-1] if L[-1] else 0))
 
-    def stretch(i):                             # the outline between anchors i and i+1, with margins
-        d0, d1 = anchors[i][1] - 60, anchors[i + 1][1] + 60
-        pts_ = [p for p, d, _ in fine if d0 <= d <= d1]
-        return list(zip(pts_, pts_[1:])) or [(anchors[i][0], anchors[i + 1][0])]
+    def stretch(i, margin):
+        d0, d1 = anchors[i][1] - margin, anchors[i + 1][1] + margin
+        p_ = [p for p, d, _ in fine if d0 <= d <= d1]
+        return list(zip(p_, p_[1:])) or [(anchors[i][0], anchors[i + 1][0])]
 
-    matched_len = total_len = 0.0
-    i = 0
-    while i < len(anchors) - 1:
-        if not cands[i]:
-            seq = [p for p, d, _ in fine if anchors[i][1] <= d <= anchors[i + 1][1]] or [anchors[i][0], anchors[i + 1][0]]
-            emit(seq, anchors[i][1], anchors[i + 1][1]); total_len += anchors[i + 1][1] - anchors[i][1]; i += 1; continue
-        score = [(c[0] / DEV) ** 2 * 3 for c in cands[i]]; back, legs, j = [], [], i
-        while j + 1 < len(anchors) and cands[j + 1]:
-            cor = Corridor(roads, stretch(j)); straight = math.dist(anchors[j][0], anchors[j + 1][0])
-            nxt = cands[j + 1]; ns, nb, nl = [1e18] * len(nxt), [None] * len(nxt), [None] * len(nxt)
-            for k, c1 in enumerate(cands[j]):
+    def step(j, score):
+        """best transitions from anchor j's candidates to anchor j+1's, widening the corridor if needed"""
+        straight = math.dist(anchors[j][0], anchors[j + 1][0])
+        for w in CORRIDORS:
+            cor = Corridor(roads, stretch(j, 60 + w), w); nxt = C[j + 1]
+            ns, nb, nl = [1e18] * len(nxt), [None] * len(nxt), [None] * len(nxt)
+            for k, c1 in enumerate(C[j]):
                 if score[k] >= 1e17: continue
-                for q, r in enumerate(guided(roads, cor, c1, nxt, straight * 8 + 400)):
+                for q, r in enumerate(drives(roads, cor, c1, nxt, straight * 10 + 600 + w * 8)):
                     if not r: continue
                     sc = score[k] + r[0] + (nxt[q][0] / DEV) ** 2 * 3
                     if sc < ns[q]: ns[q], nb[q], nl[q] = sc, k, r[1]
-            if min(ns) >= 1e17: break
+            if min(ns) < 1e17: return ns, nb, nl, w
+        return None
+
+    matched = total = 0.0; wide = 0
+    i = 0
+    while i < len(anchors) - 1:
+        if not C[i]:
+            seq = [p for p, d, _ in fine if anchors[i][1] <= d <= anchors[i + 1][1]] or [anchors[i][0], anchors[i + 1][0]]
+            emit(seq, anchors[i][1], anchors[i + 1][1]); total += anchors[i + 1][1] - anchors[i][1]; i += 1; continue
+        score = [(c[0] / DEV) ** 2 * 3 for c in C[i]]; back, legs, j = [], [], i
+        while j + 1 < len(anchors) and C[j + 1]:
+            r = step(j, score)
+            if not r: BREAKS.append(unm(*anchors[j][0])); break
+            ns, nb, nl, w = r
+            if w != CORRIDORS[0]: wide += 1
             score, back, legs, j = ns, back + [nb], legs + [nl], j + 1
         k = min(range(len(score)), key=lambda q: score[q]); chain = [k]
         for nb in reversed(back): k = nb[k]; chain.append(k)
         chain.reverse()
-        for s in range(len(chain) - 1):
-            emit(legs[s][chain[s + 1]], anchors[i + s][1], anchors[i + s + 1][1])
-            matched_len += anchors[i + s + 1][1] - anchors[i + s][1]
-        total_len += anchors[j][1] - anchors[i][1]
-        if j == i: emit([anchors[i][0]], anchors[i][1], anchors[i][1])
-        if j + 1 < len(anchors):                # no drive to the next anchor: outline until it
+        if j == i: emit([C[i][chain[0]][3]], anchors[i][1], anchors[i][1])
+        for s_ in range(len(chain) - 1):
+            emit(legs[s_][chain[s_ + 1]], anchors[i + s_][1], anchors[i + s_ + 1][1])
+        matched += anchors[j][1] - anchors[i][1]; total += anchors[j][1] - anchors[i][1]
+        if j + 1 < len(anchors):                           # no legal drive at all: outline until the next anchor
             seq = [out_pts[-1]] + [p for p, d, _ in fine if anchors[j][1] < d < anchors[j + 1][1]] + [anchors[j + 1][0]]
-            emit(seq, out_d[-1], anchors[j + 1][1]); total_len += anchors[j + 1][1] - anchors[j][1]
+            emit(seq, out_d[-1], anchors[j + 1][1]); total += anchors[j + 1][1] - anchors[j][1]
         i = j + 1
-    return out_pts, out_d, matched_len / max(1e-9, total_len)
+    return out_pts, out_d, matched / max(1e-9, total)
 
 
 def despike(pts, ds):
@@ -457,7 +570,7 @@ def despike(pts, ds):
     return pts, ds
 
 
-def simplify(pts, ds, tol=0.7):
+def simplify(pts, ds, tol=1.6):
     """Douglas-Peucker, keeping each kept point's distance"""
     keep = [False] * len(pts); keep[0] = keep[-1] = True; stack = [(0, len(pts) - 1)]
     while stack:
