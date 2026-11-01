@@ -48,8 +48,8 @@ self.addEventListener('fetch', e => {
     e.respondWith(piece(req, url)); return;
   }
 
-  /* The route planner's search index: cache first (its address changes whenever it's rebuilt). */
-  if (url.origin === location.origin && url.pathname.endsWith('/map/places.json')) {
+  /* The route planner's search index and walking network: cache first (its address changes whenever it's rebuilt). */
+  if (url.origin === location.origin && /\/map\/(places|walk)\.json$/.test(url.pathname)) {
     e.respondWith(caches.match(req).then(hit => hit || fetch(req).then(res => {
       if (res.ok) { const copy = res.clone(); caches.open(CACHE).then(c => c.put(req, copy)); }
       return res;

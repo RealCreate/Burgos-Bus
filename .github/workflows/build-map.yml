@@ -72,6 +72,9 @@ jobs:
       - name: Rebuild the route planner's places and addresses
         run: python3 tools/build_places.py
 
+      - name: Rebuild the route planner's walking network
+        run: python3 tools/build_walk.py
+
       # The page carries the map's build date in the map's address, so rebuild it too.
       - name: Rebuild the page
         run: python3 tools/build_site.py --keep-data
@@ -80,7 +83,7 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898299+github-actions[bot]@users.noreply.github.com'
-          git add map/burgos.pmtiles map/BUILD_DATE map/places.json index.html
+          git add map/burgos.pmtiles map/BUILD_DATE map/places.json map/walk.json index.html
           if git diff --cached --quiet; then echo "Map unchanged"; exit 0; fi
           git commit -m "Map: OpenStreetMap data for Burgos from Protomaps build ${{ steps.src.outputs.date }}"
           git push
