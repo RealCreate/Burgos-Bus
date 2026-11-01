@@ -4,11 +4,11 @@
    (map/burgos.pmtiles) that the page reads in small pieces; every piece you've needed is kept
    (up to PIECE_MAX, oldest dropped first), so places you've seen load instantly and still show
    offline, without ever downloading the whole file. */
-const CACHE = 'burgosbus-v2';
+const CACHE = 'burgosbus-v3';
 const TILES = 'burgosbus-map';
 const PIECE_MAX = 3000;   /* pieces are small (a few KB each), so this is roughly 15 MB at most */
 const PAGE = './';
-const STATIC = ['https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js', './map/protomaps-leaflet-5.1.0.js',
+const STATIC = ['./lib/leaflet-1.9.4.js', './lib/protomaps-leaflet-5.1.0.js',
                 './apple-touch-icon.png', './icons/icon-192.png', './icons/icon-512.png', './manifest.webmanifest'];
 
 /* Cache Leaflet and the icons at install too. The page that registers the worker has already
