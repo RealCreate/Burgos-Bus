@@ -1,7 +1,7 @@
 {
   "name": "Burgos Bus",
   "short_name": "Burgos Bus",
-  "description": "Burgos urban bus lines, stops, timetables and map.",
+  "description": "Unofficial guide to Burgos urban bus lines, stops, timetables and map. Not affiliated with the Ayuntamiento de Burgos.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

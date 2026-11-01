@@ -1,12 +1,14 @@
 /* Offline support. The page is fetched from the network first, so timetable updates arrive
    as soon as they're published; the last copy is kept for when there's no connection.
-   Leaflet and the icons are cached at install. Map tiles you have looked at are kept too (up to
-   TILE_MAX, oldest dropped first), so places you've seen load instantly and still show offline. */
-const CACHE = 'burgosbus-v1';
-const TILES = 'burgosbus-tiles';
-const TILE_MAX = 1500;   /* roughly 30 MB of retina tiles */
+   Leaflet, the map code and the icons are cached at install. The street map is one file
+   (map/burgos.pmtiles) that the page reads in small pieces; every piece you've needed is kept
+   (up to PIECE_MAX, oldest dropped first), so places you've seen load instantly and still show
+   offline, without ever downloading the whole file. */
+const CACHE = 'burgosbus-v2';
+const TILES = 'burgosbus-map';
+const PIECE_MAX = 3000;   /* pieces are small (a few KB each), so this is roughly 15 MB at most */
 const PAGE = './';
-const STATIC = ['https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js',
+const STATIC = ['https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js', './map/protomaps-leaflet-5.1.0.js',
                 './apple-touch-icon.png', './icons/icon-192.png', './icons/icon-512.png', './manifest.webmanifest'];
 
 /* Cache Leaflet and the icons at install too. The page that registers the worker has already
@@ -41,8 +43,10 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  /* Map tiles: cache first. */
-  if (url.hostname === 'basemaps.cartocdn.com') { e.respondWith(tile(req, url)); return; }
+  /* Pieces of the street map: cache first. */
+  if (url.origin === location.origin && url.pathname.endsWith('/map/burgos.pmtiles') && req.headers.get('range')) {
+    e.respondWith(piece(req, url)); return;
+  }
 
   /* Leaflet and icons: cache first. */
   if (STATIC.some(s => new URL(s, location).href === url.href)) {
@@ -54,27 +58,32 @@ self.addEventListener('fetch', e => {
   }
 });
 
-/* Tiles are fetched in CORS mode so they can be stored without the size padding browsers add to
-   opaque responses. If the tile server ever refuses CORS, fall back to a plain fetch (uncached). */
-let puts = 0, noCors = false;
-async function tile(req, url) {
+/* Each piece is stored under the file's address plus its byte range. The Cache API refuses partial
+   (206) responses, so a piece is stored as a plain response and turned back into a 206 when served.
+   The file's address carries its build date (?v=), so pieces of an old map are never mixed with a new
+   one; they're simply never asked for again and age out. If anything goes wrong, the network answers. */
+let puts = 0;
+async function piece(req, url) {
+  const range = req.headers.get('range');
+  const key = url.href + (url.search ? '&' : '?') + 'range=' + encodeURIComponent(range);
   const c = await caches.open(TILES);
-  const hit = await c.match(url.href);
-  if (hit) return hit;
-  if (noCors) return fetch(req);
-  let res;
-  try { res = await fetch(url.href, { mode: 'cors', credentials: 'omit' }); }
-  catch (err) {
-    const plain = await fetch(req);   /* offline: this throws too, and the tile just stays blank */
-    noCors = true;                    /* online but refused: stop trying CORS for this session */
-    return plain;
+  const hit = await c.match(key);
+  if (hit) {
+    const h = new Headers(hit.headers);
+    return new Response(hit.body, { status: 206, statusText: 'Partial Content', headers: h });
   }
-  if (res.ok) {
-    c.put(url.href, res.clone()).then(() => { if (++puts % 50 === 0) trim(c); }).catch(() => {});
+  const res = await fetch(req);
+  if (res.status === 206) {
+    const body = await res.clone().arrayBuffer();
+    const h = new Headers();
+    for (const k of ['content-type', 'content-range', 'etag', 'last-modified']) { const v = res.headers.get(k); if (v) h.set(k, v); }
+    h.set('content-length', String(body.byteLength));
+    c.put(key, new Response(body, { status: 200, headers: h }))
+      .then(() => { if (++puts % 100 === 0) trim(c); }).catch(() => {});
   }
   return res;
 }
 async function trim(c) {
   const keys = await c.keys();
-  if (keys.length > TILE_MAX) await Promise.all(keys.slice(0, keys.length - TILE_MAX).map(k => c.delete(k)));
+  if (keys.length > PIECE_MAX) await Promise.all(keys.slice(0, keys.length - PIECE_MAX).map(k => c.delete(k)));
 }

@@ -1,0 +1,80 @@
+# Builds the site's own street map of Burgos: map/burgos.pmtiles.
+#
+# It cuts a box around Burgos out of the latest OpenStreetMap basemap from Protomaps
+# (buildings, roads, parks, water, street names), so nothing outside the city is in the file
+# and the site never depends on an outside map server.
+#
+# Run it by hand from the Actions tab (Build map -> Run workflow) when you want fresher map data,
+# e.g. after new streets open.
+# Each run replaces the file (a few MB), so there's no need to run it often.
+name: Build map
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-map
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # west,south,east,north: every line and stop, with enough countryside around them to fill a
+      # phone screen when the whole city is in view. Keep in step with MAP_BOUNDS in tools/template.html.
+      BBOX: '-3.86,42.25,-3.52,42.46'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get the pmtiles tool
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download --repo protomaps/go-pmtiles --pattern '*_Linux_x86_64.tar.gz' --output pmtiles.tgz
+          tar xzf pmtiles.tgz pmtiles
+          ./pmtiles version
+
+      - name: Find the newest Protomaps build
+        id: src
+        run: |
+          for i in $(seq 0 20); do
+            d=$(date -u -d "-$i day" +%Y%m%d)
+            if curl -sfI "https://build.protomaps.com/$d.pmtiles" > /dev/null; then
+              echo "url=https://build.protomaps.com/$d.pmtiles" >> "$GITHUB_OUTPUT"
+              echo "date=$d" >> "$GITHUB_OUTPUT"
+              echo "Using $d"; exit 0
+            fi
+          done
+          echo "No Protomaps build found in the last 3 weeks"; exit 1
+
+      - name: Cut out Burgos
+        run: |
+          mkdir -p map
+          ./pmtiles extract "${{ steps.src.outputs.url }}" map/burgos.pmtiles --bbox="$BBOX" --maxzoom=15
+          ./pmtiles show map/burgos.pmtiles
+          size=$(stat -c %s map/burgos.pmtiles)
+          echo "Size: $size bytes"
+          # A broken or empty cut must never replace a working map.
+          if [ "$size" -lt 500000 ]; then echo "File looks too small"; exit 1; fi
+          echo "${{ steps.src.outputs.date }}" > map/BUILD_DATE   # for reference; the page uses a fingerprint of the file
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # The page carries the map's build date in the map's address, so rebuild it too.
+      - name: Rebuild the page
+        run: python3 tools/build_site.py --keep-data
+
+      - name: Publish
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898299+github-actions[bot]@users.noreply.github.com'
+          git add map/burgos.pmtiles map/BUILD_DATE index.html
+          if git diff --cached --quiet; then echo "Map unchanged"; exit 0; fi
+          git commit -m "Map: OpenStreetMap data for Burgos from Protomaps build ${{ steps.src.outputs.date }}"
+          git push
