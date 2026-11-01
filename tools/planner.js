@@ -23,6 +23,8 @@ function loadPlaces(){
 }
 const AREA_KIND=/^(neighbourhood|city|town|village|hamlet)$/;
 const KIND_ICON=k=>AREA_KIND.test(k)?'🏘':/restaurant|bar|cafe|pub|fast_food|ice_cream|biergarten/.test(k)?'☕':/supermarket|convenience|mall|department|marketplace|greengrocer|bakery|butcher|shop|clothes|shoes|books|electronics|hardware|florist|optician|jewel|gift|toys|sports|furniture|beauty|hairdresser|kiosk|chemist|stationery|mobile/.test(k)?'🛍':/hospital|clinic|doctors|dentist|pharmacy|health|veterinary/.test(k)?'⚕️':/school|university|college|kindergarten|library/.test(k)?'🎓':/museum|theatre|cinema|arts|gallery|attraction|monument|castle|memorial|ruins|historic/.test(k)?'🏛':/hotel|hostel|guest_house|apartment/.test(k)?'🛏':/place_of_worship|church|cathedral/.test(k)?'⛪':/park|garden|playground|pitch|sports_centre|stadium|swimming|fitness/.test(k)?'🌳':/station|bus|train|taxi/.test(k)?'🚉':/townhall|police|post_office|courthouse|government|bank/.test(k)?'🏢':'📍';
+/* names people use that the map doesn't have: nickname -> name on the map (add more here) */
+const ALIASES={'iecua':'Iglesia Evangélica Comunidades Unidas Anabautistas'};
 const STREET_WORDS=/^(calle|c\/|avenida|avda\.?|av\.?|paseo|p\.?º|plaza|pza\.?|camino|carretera|ctra\.?|glorieta|ronda|travesia|bulevar)\s+/;
 const stripSt=s=>s.replace(STREET_WORDS,'').replace(/^(de|del|de la|de los|de las)\s+/,'');
 function planSearch(q){
@@ -37,7 +39,8 @@ function planSearch(q){
       if(h) out.push({t:'addr',name:`${s.n} ${h[0]}`,area:s.area,lat:h[1],lon:h[2],sc:stripSt(s.key).startsWith(sk)?-2:-1}); } }
   for(const s of S){ if(!stopRefs[s.i].length) continue; const k=norm(s.name), sc=Math.min(score(k),s.code.toLowerCase()===nq||s.code.slice(2).replace(/^0+/,'')===nq?0:9);
     if(sc<9) out.push({t:'stop',name:s.name,code:s.code,lat:s.lat,lon:s.lon,stop:s.i,sc:sc+.5}); }
-  if(PLACES) for(const p of PLACES.list){ const sc=score(p.key); if(sc<9) out.push(Object.assign({},p,{sc:sc+(p.t==='street'?.2:AREA_KIND.test(p.kind)?-.3:0)})); }
+  const alias=Object.entries(ALIASES).filter(([k])=>k.startsWith(nq)).map(([,v])=>norm(v));
+  if(PLACES) for(const p of PLACES.list){ const sc=alias.includes(p.key)?-1:score(p.key); if(sc<9) out.push(Object.assign({},p,{sc:sc+(p.t==='street'?.2:AREA_KIND.test(p.kind)?-.3:0)})); }
   out.sort((a,b)=>a.sc-b.sc||a.name.length-b.name.length);
   /* places out of reach of the buses (the villages around Burgos) go below those near a stop */
   const top=out.slice(0,80); top.forEach(x=>{ if(x.t!=='stop'&&!nearStops(x.lat,x.lon,MAX_WALK_FAR).length) x.sc+=1.5; });
