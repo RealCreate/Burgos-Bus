@@ -44,7 +44,9 @@ After changing only `tools/template.html` or `tools/i18n.js`, run `python3 tools
 
 ## Routes on the roads
 
-The city's timetable draws each route as a rough outline. When the site is built, `tools/match_shapes.py` snaps every route onto the roads of the site's own map (`map/burgos.pmtiles`), respecting one-way streets, and keeps the original outline wherever a stretch can't be matched. It needs `pip install pmtiles` (the GitHub Actions do this); without it the outlines are used as they are. It runs once per timetable, in a few seconds.
+The city's timetable draws each route as a rough outline. When the site is built, `tools/match_shapes.py` snaps every route onto the roads of the site's own map (`map/burgos.pmtiles`), respecting one-way streets, and keeps the original outline wherever a stretch can't be matched. It needs `pip install pmtiles` (the GitHub Actions do this); without it the outlines are used as they are. It runs once per timetable, in about 20 seconds.
+
+The build then runs `tools/check_routes.py`, which lists every place where a route still looks odd: off the road, turning back on itself, or jogging sideways. Each line has coordinates to look at. Most remaining ones are real (a bus turning round at the end of the line, pulling into a bus bay, or using a road missing from the map).
 
 ## Public holidays
 

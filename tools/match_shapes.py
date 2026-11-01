@@ -229,14 +229,19 @@ class Roads:
                 for a, b in zip(pts, pts[1:]):
                     c = clip(a, b, x0, y0, x0 + 4096, y0 + 4096)   # each tile only up to its own edge
                     if not c: continue
-                    u, v = self.node(*c[0]), self.node(*c[1])
-                    if u == v: continue
-                    d = math.dist(self.xy[u], self.xy[v])
-                    cf = WRONG_WAY(d) if back_only else d
-                    cb = WRONG_WAY(d) if fwd_only else d
-                    self.adj[u][v] = min(cf, self.adj[u].get(v, 1e18))
-                    self.adj[v][u] = min(cb, self.adj[v].get(u, 1e18))
-                    self.L[(min(u, v), max(u, v))] = d
+                    # long straight streets are cut into pieces of at most ~20 m, so every piece can be
+                    # judged by how close it runs to a route
+                    n = max(1, int(math.dist(m(*world_to_ll(*c[0])), m(*world_to_ll(*c[1]))) // 20))
+                    ps = [(c[0][0] + (c[1][0] - c[0][0]) * k / n, c[0][1] + (c[1][1] - c[0][1]) * k / n) for k in range(n + 1)]
+                    for pa, pb in zip(ps, ps[1:]):
+                        u, v = self.node(*pa), self.node(*pb)
+                        if u == v: continue
+                        d = math.dist(self.xy[u], self.xy[v])
+                        cf = WRONG_WAY(d) if back_only else d
+                        cb = WRONG_WAY(d) if fwd_only else d
+                        self.adj[u][v] = min(cf, self.adj[u].get(v, 1e18))
+                        self.adj[v][u] = min(cb, self.adj[v].get(u, 1e18))
+                        self.L[(min(u, v), max(u, v))] = d
 
     def f(self, a, b):
         """cost per metre of driving the street segment a -> b"""
@@ -285,115 +290,167 @@ def path_to(prev, n):
 
 
 # ---------- matching one route ----------
+#
+# The outline is cut into stretches of about ANCHOR metres. Each stretch end ("anchor") gets a few
+# candidate points on nearby roads, and consecutive anchors are joined by the cheapest drive along the
+# roads, where a street costs more the further it strays from the outline, and much more when driven
+# against the outline's direction (that keeps each direction on its own carriageway) or against a one-way
+# street. The best chain of candidates is picked with the Viterbi algorithm. Sparse anchors plus a
+# corridor-shaped cost give one continuous drive, without the zig-zags of matching every point.
 
-def resample(pts, cum):
-    """points every STEP metres along the route (plus the ends), with their distance on the timetable's scale"""
-    xy = [m(*p) for p in pts]
-    out = [(xy[0], cum[0])]
+ANCHOR = 120                # metres between anchors
+CORRIDOR = 45               # metres: streets further than this from the outline aren't used
+DEV = 11                    # metres: straying this far from the outline doubles a street's cost
+AGAINST = 6                 # cost factor for driving against the outline's direction
+
+
+def resample(xy, cum, step):
+    """points every `step` metres along a polyline (plus the ends): [(point, timetable distance, index)]"""
     geo = [0.0]
     for a, b in zip(xy, xy[1:]): geo.append(geo[-1] + math.dist(a, b))
-    total = geo[-1]
-    if total <= 0: return out
-    k = 1; s = STEP
-    while s < total:
+    out = [(xy[0], cum[0], 0)]; k = 1; s = step
+    while s < geo[-1] - step * .4:
         while geo[k] < s: k += 1
         f = (s - geo[k - 1]) / ((geo[k] - geo[k - 1]) or 1)
         p = (xy[k - 1][0] + f * (xy[k][0] - xy[k - 1][0]), xy[k - 1][1] + f * (xy[k][1] - xy[k - 1][1]))
-        out.append((p, cum[k - 1] + f * (cum[k] - cum[k - 1])))
-        s += STEP
-    out.append((xy[-1], cum[-1]))
+        out.append((p, cum[k - 1] + f * (cum[k] - cum[k - 1]), k)); s += step
+    out.append((xy[-1], cum[-1], len(xy) - 1))
     return out
 
 
-def drives(roads, a, bs, cutoff):
-    """shortest drives along the roads from candidate a to each candidate in bs: [(metres, [points]) or None]"""
+class Corridor:
+    """cost of driving each street along one stretch of outline"""
+    def __init__(self, roads, segs):
+        self.r, self.segs, self.cache = roads, segs, {}
+
+    def near(self, p):
+        best = (1e18, None)
+        for a, b in self.segs:
+            dx, dy = b[0] - a[0], b[1] - a[1]; L2 = dx * dx + dy * dy
+            t = max(0.0, min(1.0, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / L2)) if L2 else 0.0
+            d = math.dist(p, (a[0] + t * dx, a[1] + t * dy))
+            if d < best[0]: best = (d, (dx, dy))
+        return best
+
+    def cost(self, u, v):
+        k = (u, v)
+        if k in self.cache: return self.cache[k]
+        r = self.r; pu, pv = r.xy[u], r.xy[v]; L = r.L[(min(u, v), max(u, v))]
+        mid = ((pu[0] + pv[0]) / 2, (pu[1] + pv[1]) / 2)
+        d = max(self.near(pu)[0], self.near(mid)[0], self.near(pv)[0])
+        if d > CORRIDOR:
+            c = None
+        else:
+            _, (ox, oy) = self.near(mid); ex, ey = pv[0] - pu[0], pv[1] - pu[1]
+            on, en = math.hypot(ox, oy), math.hypot(ex, ey)
+            dot = (ox * ex + oy * ey) / (on * en) if on and en else 1
+            c = L * (1 + (d / DEV) ** 2) * (AGAINST if dot < -0.3 else 1) * (r.adj[u][v] / L if L else 1)
+        self.cache[k] = c
+        return c
+
+
+def guided(roads, cor, a, bs, cutoff):
+    """cheapest corridor drives from candidate a to each candidate in bs: [(cost, [points]) or None]"""
     _, (u1, v1), t1, q1 = a
     L1 = roads.L[(u1, v1)]
+    def part(x, y, frac):                       # cost of driving `frac` of street x->y
+        c = cor.cost(x, y); return None if c is None else c * frac
+    src = {}
+    for n, c in ((v1, part(u1, v1, 1 - t1)), (u1, part(v1, u1, t1))):
+        if c is not None: src[n] = c
     targets = set()
     for _, (u2, v2), _, _ in bs: targets |= {u2, v2}
-    found, prev = roads.dijkstra({u1: t1 * L1 * roads.f(v1, u1), v1: (1 - t1) * L1 * roads.f(u1, v1)}, targets, cutoff)
+    dist = dict(src); prev = {}; h = [(d, n) for n, d in src.items()]; heapq.heapify(h); left = set(targets)
+    while h and left:
+        d, n = heapq.heappop(h)
+        if d > dist.get(n, 1e18) or d > cutoff: continue
+        left.discard(n)
+        for v in roads.adj[n]:
+            c = cor.cost(n, v)
+            if c is None: continue
+            nd = d + c
+            if nd < dist.get(v, 1e18): dist[v] = nd; prev[v] = n; heapq.heappush(h, (nd, v))
     out = []
     for _, (u2, v2), t2, q2 in bs:
-        L2 = roads.L[(u2, v2)]
-        if (u1, v1) == (u2, v2):                   # same street segment
-            c = (t2 - t1) * L1 * roads.f(u1, v1) if t2 >= t1 else (t1 - t2) * L1 * roads.f(v1, u1)
-            out.append((c, [q1, q2])); continue
+        if (u1, v1) == (u2, v2) and t2 >= t1:   # further along the same street
+            c = part(u1, v1, t2 - t1)
+            if c is not None: out.append((c, [q1, q2])); continue
+        if (u1, v1) == (u2, v2) and t2 < t1:
+            c = part(v1, u1, t1 - t2)
+            if c is not None: out.append((c, [q1, q2])); continue
         best = None
-        for n, extra in ((u2, t2 * L2 * roads.f(u2, v2)), (v2, (1 - t2) * L2 * roads.f(v2, u2))):
-            if n in found and (best is None or found[n] + extra < best[0]):
-                best = (found[n] + extra, n)
+        for n, x, frac in ((u2, v2, t2), (v2, u2, 1 - t2)):   # reach n, then drive n->q2
+            c = part(n, x, frac)
+            if n in dist and c is not None and (best is None or dist[n] + c < best[0]): best = (dist[n] + c, n)
         if not best: out.append(None); continue
-        nodes = path_to(prev, best[1])
-        out.append((best[0], [q1] + [roads.xy[n] for n in nodes] + [q2]))
+        nodes = [best[1]]
+        while nodes[-1] in prev: nodes.append(prev[nodes[-1]])
+        out.append((best[0], [q1] + [roads.xy[n] for n in reversed(nodes)] + [q2]))
     return out
 
 
 def match(roads, pts, cum):
-    obs = resample(pts, cum)
-    cands = [roads.candidates(p) for p, _ in obs]
+    xy = [m(*p) for p in pts]
+    anchors = resample(xy, cum, ANCHOR)
+    fine = resample(xy, cum, 8)                 # the outline, finely, for the corridors
+    cands = [roads.candidates(p) for p, _, _ in anchors]
     out_pts, out_d = [], []
 
-    def emit(seq_pts, d0, d1):
-        """append points spread over timetable distance d0..d1 in proportion to their length"""
+    def emit(seq, d0, d1):
         L = [0.0]
-        for a, b in zip(seq_pts, seq_pts[1:]): L.append(L[-1] + math.dist(a, b))
-        for p, l in zip(seq_pts, L):
-            d = d0 + (d1 - d0) * (l / L[-1] if L[-1] else 0)
+        for a, b in zip(seq, seq[1:]): L.append(L[-1] + math.dist(a, b))
+        for p, l in zip(seq, L):
             if out_pts and math.dist(out_pts[-1], p) < 0.3: continue
-            out_pts.append(p); out_d.append(d)
+            out_pts.append(p); out_d.append(d0 + (d1 - d0) * (l / L[-1] if L[-1] else 0))
 
-    i, matched = 0, 0
-    while i < len(obs):
+    def stretch(i):                             # the outline between anchors i and i+1, with margins
+        d0, d1 = anchors[i][1] - 60, anchors[i + 1][1] + 60
+        pts_ = [p for p, d, _ in fine if d0 <= d <= d1]
+        return list(zip(pts_, pts_[1:])) or [(anchors[i][0], anchors[i + 1][0])]
+
+    matched_len = total_len = 0.0
+    i = 0
+    while i < len(anchors) - 1:
         if not cands[i]:
-            if i + 1 < len(obs): emit([obs[i][0], obs[i + 1][0]], obs[i][1], obs[i + 1][1])
-            else: emit([obs[i][0]], obs[i][1], obs[i][1])
-            i += 1; continue
-        # Viterbi along a run of points that can be chained on the roads
-        score = [-0.5 * (c[0] / SIGMA) ** 2 for c in cands[i]]
-        back, legs, j = [], [], i
-        while j + 1 < len(obs) and cands[j + 1]:
-            straight = math.dist(obs[j][0], obs[j + 1][0])
-            cutoff = straight * 3 + 60
-            nxt = cands[j + 1]
-            ns, nb, nl = [-1e18] * len(nxt), [None] * len(nxt), [None] * len(nxt)
+            seq = [p for p, d, _ in fine if anchors[i][1] <= d <= anchors[i + 1][1]] or [anchors[i][0], anchors[i + 1][0]]
+            emit(seq, anchors[i][1], anchors[i + 1][1]); total_len += anchors[i + 1][1] - anchors[i][1]; i += 1; continue
+        score = [(c[0] / DEV) ** 2 * 3 for c in cands[i]]; back, legs, j = [], [], i
+        while j + 1 < len(anchors) and cands[j + 1]:
+            cor = Corridor(roads, stretch(j)); straight = math.dist(anchors[j][0], anchors[j + 1][0])
+            nxt = cands[j + 1]; ns, nb, nl = [1e18] * len(nxt), [None] * len(nxt), [None] * len(nxt)
             for k, c1 in enumerate(cands[j]):
-                if score[k] < -1e17: continue
-                for q, r in enumerate(drives(roads, c1, nxt, cutoff)):
+                if score[k] >= 1e17: continue
+                for q, r in enumerate(guided(roads, cor, c1, nxt, straight * 8 + 400)):
                     if not r: continue
-                    s = score[k] - abs(r[0] - straight) / BETA - 0.5 * (nxt[q][0] / SIGMA) ** 2
-                    if s > ns[q]: ns[q], nb[q], nl[q] = s, k, r[1]
-            if max(ns) < -1e17: break              # can't continue on the roads: end this run here
+                    sc = score[k] + r[0] + (nxt[q][0] / DEV) ** 2 * 3
+                    if sc < ns[q]: ns[q], nb[q], nl[q] = sc, k, r[1]
+            if min(ns) >= 1e17: break
             score, back, legs, j = ns, back + [nb], legs + [nl], j + 1
-        # walk back the best chain
-        k = max(range(len(score)), key=lambda q: score[q]); chain = [k]
+        k = min(range(len(score)), key=lambda q: score[q]); chain = [k]
         for nb in reversed(back): k = nb[k]; chain.append(k)
         chain.reverse()
         for s in range(len(chain) - 1):
-            leg = legs[s][chain[s + 1]]
-            straight = math.dist(obs[i + s][0], obs[i + s + 1][0])
-            L = sum(math.dist(a, b) for a, b in zip(leg, leg[1:]))
-            if L > straight * 1.8 + 25:            # a detour the bus can't be making: keep the outline
-                leg = [obs[i + s][0], obs[i + s + 1][0]]
-            else:
-                matched += 1
-            emit(leg, obs[i + s][1], obs[i + s + 1][1])
-        if len(chain) == 1: emit([cands[i][chain[0]][3]], obs[i][1], obs[i][1])
-        # bridge to the next run with the original outline
-        if j + 1 < len(obs): emit([out_pts[-1], obs[j + 1][0]], out_d[-1], obs[j + 1][1])
+            emit(legs[s][chain[s + 1]], anchors[i + s][1], anchors[i + s + 1][1])
+            matched_len += anchors[i + s + 1][1] - anchors[i + s][1]
+        total_len += anchors[j][1] - anchors[i][1]
+        if j == i: emit([anchors[i][0]], anchors[i][1], anchors[i][1])
+        if j + 1 < len(anchors):                # no drive to the next anchor: outline until it
+            seq = [out_pts[-1]] + [p for p, d, _ in fine if anchors[j][1] < d < anchors[j + 1][1]] + [anchors[j + 1][0]]
+            emit(seq, out_d[-1], anchors[j + 1][1]); total_len += anchors[j + 1][1] - anchors[j][1]
         i = j + 1
-    return out_pts, out_d, matched / max(1, len(obs) - 1)
+    return out_pts, out_d, matched_len / max(1e-9, total_len)
 
 
 def despike(pts, ds):
     """remove short out-and-back spikes (a match that pokes into a side street and returns)"""
     changed = True
-    while changed and len(pts) > 2:
+    while changed and len(pts) > 2:  # noqa
         changed = False; P, D = [pts[0]], [ds[0]]
         for k in range(1, len(pts) - 1):
             a, b, c = P[-1], pts[k], pts[k + 1]
             ux, uy, vx, vy = b[0] - a[0], b[1] - a[1], c[0] - b[0], c[1] - b[1]
             la, lb = math.hypot(ux, uy), math.hypot(vx, vy)
-            if la and lb and (ux * vx + uy * vy) / (la * lb) < -0.8 and min(la, lb) < 40:
+            if la and lb and (ux * vx + uy * vy) / (la * lb) < -0.7 and min(la, lb) < 60:
                 changed = True; continue
             P.append(b); D.append(ds[k])
         P.append(pts[-1]); D.append(ds[-1]); pts, ds = P, D
