@@ -42,6 +42,10 @@ To rebuild by hand instead: `python3 tools/build_site.py Google_transit.zip`, th
 
 After changing only `tools/template.html` or `tools/i18n.js`, run `python3 tools/build_site.py --keep-data` to rebuild with the timetable already in `index.html`.
 
+## Routes on the roads
+
+The city's timetable draws each route as a rough outline. When the site is built, `tools/match_shapes.py` snaps every route onto the roads of the site's own map (`map/burgos.pmtiles`), respecting one-way streets, and keeps the original outline wherever a stretch can't be matched. It needs `pip install pmtiles` (the GitHub Actions do this); without it the outlines are used as they are. It runs once per timetable, in a few seconds.
+
 ## Public holidays
 
 When the published timetable has run out, the site shows the nearest matching day from the last weeks it covers. On public holidays it uses Sunday times instead, from the `HOLIDAYS` list in `tools/template.html`. Add each new year's Burgos holidays there (national, Castilla y León and the two local ones) once they're published, then run `python3 tools/build_site.py --keep-data`.

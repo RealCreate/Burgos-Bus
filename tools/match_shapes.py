@@ -1,0 +1,445 @@
+"""Snap the bus routes onto the roads of the site's own map.
+
+The city's timetable (GTFS) draws each route as a rough outline: it cuts corners, floats beside the
+road and turns roundabouts into polygons. This matches every route onto the road network in
+map/burgos.pmtiles (OpenStreetMap), the way a sat-nav puts a GPS trace on the road (a hidden Markov
+model: points along the route are matched to nearby roads, and consecutive matches must be joined by a
+short drive along the roads).
+
+Distances along each route are kept on the timetable's scale, so where stops sit on a route, and where
+buses are drawn between them, don't change. Wherever a stretch can't be matched sensibly (no road
+nearby, or the only way along the roads is a long detour), the original outline is kept for that stretch.
+
+Usage:  python3 tools/match_shapes.py DATA.json [map/burgos.pmtiles]
+        (rewrites DATA.json's shapes in place; build_site.py runs this for you)
+Needs:  pip install pmtiles
+"""
+import gzip, heapq, json, math, os, sys
+from collections import defaultdict
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+Z = 15                      # zoom of the map tiles read (the most detailed in the file)
+STEP = 20                   # metres between points of a route that are matched
+RADIUS = 30                 # metres: roads further than this from a route point aren't candidates
+SIGMA = 9                   # metres: how far a route point is typically drawn from its real road
+BETA = 6                    # metres: how much longer than the straight line a drive may usually be
+MAX_CANDS = 6
+SKIP_KINDS = {'path', 'rail', 'ferry', 'aerialway', 'runway', 'taxiway'}
+# One-way streets: driving them the wrong way costs this much more (not forbidden: buses use contraflow
+# bus lanes, which the map data doesn't mark). This keeps routes on the right side of dual carriageways
+# and going the right way round roundabouts.
+WRONG_WAY = lambda d: d * 4 + 40
+
+
+# ---------- reading the map file ----------
+
+def varint(b, i):
+    r = s = 0
+    while True:
+        c = b[i]; i += 1
+        r |= (c & 0x7f) << s; s += 7
+        if c < 0x80:
+            return r, i
+
+
+def fields(b):
+    """(field number, wire type, value) for each field of a protobuf message"""
+    i, n = 0, len(b)
+    while i < n:
+        k, i = varint(b, i); f, w = k >> 3, k & 7
+        if w == 0:
+            v, i = varint(b, i)
+        elif w == 2:
+            l, i = varint(b, i); v = b[i:i + l]; i += l
+        elif w == 1:
+            v = b[i:i + 8]; i += 8
+        elif w == 5:
+            v = b[i:i + 4]; i += 4
+        else:
+            raise ValueError('wire type %d' % w)
+        yield f, w, v
+
+
+def packed(b):
+    i, out = 0, []
+    while i < len(b):
+        v, i = varint(b, i); out.append(v)
+    return out
+
+
+def value(b):
+    import struct
+    for f, w, v in fields(b):
+        if f == 1: return v.decode('utf-8', 'replace')
+        if f == 2: return struct.unpack('<f', v)[0]
+        if f == 3: return struct.unpack('<d', v)[0]
+        if f in (4, 5): return v
+        if f == 6: return (v >> 1) ^ -(v & 1)
+        if f == 7: return bool(v)
+
+
+def road_lines(tile):
+    """[(props, [[(x, y), ...], ...])] for the line features of the 'roads' layer, in tile units"""
+    out = []
+    for f, w, layer in fields(tile):
+        if f != 3: continue
+        name, feats, keys, vals, extent = None, [], [], [], 4096
+        for g, _, v in fields(layer):
+            if g == 1: name = v.decode()
+            elif g == 2: feats.append(v)
+            elif g == 3: keys.append(v.decode())
+            elif g == 4: vals.append(value(v))
+            elif g == 5: extent = v
+        if name != 'roads': continue
+        for fb in feats:
+            tags, typ, geom = [], 0, []
+            for g, _, v in fields(fb):
+                if g == 2: tags = packed(v)
+                elif g == 3: typ = v
+                elif g == 4: geom = packed(v)
+            if typ != 2: continue
+            props = {keys[tags[k]]: vals[tags[k + 1]] for k in range(0, len(tags), 2)}
+            lines, cur, x, y, i = [], None, 0, 0, 0
+            while i < len(geom):
+                cmd, cnt = geom[i] & 7, geom[i] >> 3; i += 1
+                for _ in range(cnt):
+                    if cmd in (1, 2):
+                        dx, dy = geom[i], geom[i + 1]; i += 2
+                        x += (dx >> 1) ^ -(dx & 1); y += (dy >> 1) ^ -(dy & 1)
+                        if cmd == 1:
+                            cur = [(x * 4096 / extent, y * 4096 / extent)]; lines.append(cur)
+                        else:
+                            cur.append((x * 4096 / extent, y * 4096 / extent))
+            out.append((props, lines))
+    return out
+
+
+# ---------- geometry ----------
+
+N = 4096 * 2 ** Z           # world size in map units at zoom Z
+LAT0 = 42.345
+KX, KY = 111320 * math.cos(math.radians(LAT0)), 110574
+
+
+def world_to_ll(X, Y):
+    lon = X / N * 360 - 180
+    lat = math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * Y / N))))
+    return lat, lon
+
+
+def ll_to_world(lat, lon):
+    x = (lon + 180) / 360 * N
+    s = math.sin(math.radians(lat))
+    y = (0.5 - math.log((1 + s) / (1 - s)) / (4 * math.pi)) * N
+    return x, y
+
+
+def m(lat, lon):            # metres on a local flat grid around Burgos
+    return (lon * KX, lat * KY)
+
+
+def unm(x, y):
+    return (y / KY, x / KX)
+
+
+def clip(a, b, x0, y0, x1, y1):
+    """the part of segment a-b inside the box (Liang-Barsky), or None"""
+    t0, t1 = 0.0, 1.0
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    for p, q in ((-dx, a[0] - x0), (dx, x1 - a[0]), (-dy, a[1] - y0), (dy, y1 - a[1])):
+        if p == 0:
+            if q < 0: return None
+        else:
+            t = q / p
+            if p < 0:
+                if t > t1: return None
+                t0 = max(t0, t)
+            else:
+                if t < t0: return None
+                t1 = min(t1, t)
+    return (a[0] + t0 * dx, a[1] + t0 * dy), (a[0] + t1 * dx, a[1] + t1 * dy)
+
+
+def dec_poly(s):
+    i = lat = lon = 0; out = []
+    while i < len(s):
+        vals = []
+        for _ in range(2):
+            r = sh = 0
+            while True:
+                b = ord(s[i]) - 63; i += 1; r |= (b & 0x1f) << sh; sh += 5
+                if b < 0x20: break
+            vals.append(~(r >> 1) if r & 1 else r >> 1)
+        lat += vals[0]; lon += vals[1]; out.append((lat / 1e5, lon / 1e5))
+    return out
+
+
+def enc_poly(pts, prec=1e5):
+    out = []; pl = pg = 0
+    for lat, lon in pts:
+        a, b = int(round(lat * prec)), int(round(lon * prec))
+        for v in (a - pl, b - pg):
+            v = ~(v << 1) if v < 0 else (v << 1)
+            while v >= 0x20:
+                out.append(chr((0x20 | (v & 0x1f)) + 63)); v >>= 5
+            out.append(chr(v + 63))
+        pl, pg = a, b
+    return ''.join(out)
+
+
+# ---------- the road network ----------
+
+class Roads:
+    def __init__(self, pmtiles_path, bbox):
+        from pmtiles.reader import Reader, MmapSource
+        self.adj = defaultdict(dict)      # node -> {node: cost of driving that way, metres}
+        self.L = {}                       # (node, node) sorted -> length, metres
+        self.xy = {}                      # node -> (x, y) metres
+        lat0, lon0, lat1, lon1 = bbox
+        xa, ya = ll_to_world(lat1, lon0); xb, yb = ll_to_world(lat0, lon1)
+        with open(pmtiles_path, 'rb') as f:
+            reader = Reader(MmapSource(f))
+            for tx in range(int(xa // 4096), int(xb // 4096) + 1):
+                for ty in range(int(ya // 4096), int(yb // 4096) + 1):
+                    data = reader.get(Z, tx, ty)
+                    if not data: continue
+                    if data[:2] == b'\x1f\x8b': data = gzip.decompress(data)
+                    self.add_tile(tx, ty, data)
+        self.grid = defaultdict(list)     # 40 m cells -> edges
+        for (u, v) in self.L:
+                    (x1, y1), (x2, y2) = self.xy[u], self.xy[v]
+                    for cx in range(int(min(x1, x2) // 40), int(max(x1, x2) // 40) + 1):
+                        for cy in range(int(min(y1, y2) // 40), int(max(y1, y2) // 40) + 1):
+                            self.grid[(cx, cy)].append((u, v))
+
+    def node(self, X, Y):
+        k = (round(X * 2), round(Y * 2))   # half a map unit (~10 cm): tiles meet exactly
+        if k not in self.xy:
+            self.xy[k] = m(*world_to_ll(X, Y))
+        return k
+
+    def add_tile(self, tx, ty, data):
+        x0, y0 = tx * 4096, ty * 4096
+        for props, lines in road_lines(data):
+            if props.get('kind') in SKIP_KINDS: continue
+            ow = str(props.get('oneway', '')).lower()
+            fwd_only, back_only = ow in ('yes', 'true', '1'), ow == '-1'
+            for line in lines:
+                pts = [(x0 + x, y0 + y) for x, y in line]
+                for a, b in zip(pts, pts[1:]):
+                    c = clip(a, b, x0, y0, x0 + 4096, y0 + 4096)   # each tile only up to its own edge
+                    if not c: continue
+                    u, v = self.node(*c[0]), self.node(*c[1])
+                    if u == v: continue
+                    d = math.dist(self.xy[u], self.xy[v])
+                    cf = WRONG_WAY(d) if back_only else d
+                    cb = WRONG_WAY(d) if fwd_only else d
+                    self.adj[u][v] = min(cf, self.adj[u].get(v, 1e18))
+                    self.adj[v][u] = min(cb, self.adj[v].get(u, 1e18))
+                    self.L[(min(u, v), max(u, v))] = d
+
+    def f(self, a, b):
+        """cost per metre of driving the street segment a -> b"""
+        return self.adj[a][b] / (self.L[(min(a, b), max(a, b))] or 1)
+
+    def candidates(self, p):
+        cx, cy = int(p[0] // 40), int(p[1] // 40); seen = set(); out = []
+        for gx in range(cx - 1, cx + 2):
+            for gy in range(cy - 1, cy + 2):
+                for e in self.grid.get((gx, gy), ()):
+                    if e in seen: continue
+                    seen.add(e)
+                    (x1, y1), (x2, y2) = self.xy[e[0]], self.xy[e[1]]
+                    dx, dy = x2 - x1, y2 - y1; L2 = dx * dx + dy * dy
+                    t = max(0.0, min(1.0, ((p[0] - x1) * dx + (p[1] - y1) * dy) / L2)) if L2 else 0.0
+                    q = (x1 + t * dx, y1 + t * dy); d = math.dist(p, q)
+                    if d <= RADIUS: out.append((d, e, t, q))
+        out.sort(key=lambda c: c[0])
+        # one candidate per road: keep the nearest point of each nearby street
+        best, used = [], []
+        for c in out:
+            if any(math.dist(c[3], o[3]) < 4 for o in used): continue
+            used.append(c); best.append(c)
+            if len(best) == MAX_CANDS: break
+        return best
+
+    def dijkstra(self, sources, targets, cutoff):
+        """shortest distances and paths from sources {node: start metres} to any of targets"""
+        dist = dict(sources); prev = {}; h = [(d, n) for n, d in sources.items()]; heapq.heapify(h)
+        left = set(targets); found = {}
+        while h and left:
+            d, n = heapq.heappop(h)
+            if d > dist.get(n, 1e18) or d > cutoff: continue
+            if n in left: left.discard(n); found[n] = d
+            for v, w in self.adj[n].items():
+                nd = d + w
+                if nd < dist.get(v, 1e18):
+                    dist[v] = nd; prev[v] = n; heapq.heappush(h, (nd, v))
+        return found, prev
+
+
+def path_to(prev, n):
+    out = [n]
+    while n in prev: n = prev[n]; out.append(n)
+    return out[::-1]
+
+
+# ---------- matching one route ----------
+
+def resample(pts, cum):
+    """points every STEP metres along the route (plus the ends), with their distance on the timetable's scale"""
+    xy = [m(*p) for p in pts]
+    out = [(xy[0], cum[0])]
+    geo = [0.0]
+    for a, b in zip(xy, xy[1:]): geo.append(geo[-1] + math.dist(a, b))
+    total = geo[-1]
+    if total <= 0: return out
+    k = 1; s = STEP
+    while s < total:
+        while geo[k] < s: k += 1
+        f = (s - geo[k - 1]) / ((geo[k] - geo[k - 1]) or 1)
+        p = (xy[k - 1][0] + f * (xy[k][0] - xy[k - 1][0]), xy[k - 1][1] + f * (xy[k][1] - xy[k - 1][1]))
+        out.append((p, cum[k - 1] + f * (cum[k] - cum[k - 1])))
+        s += STEP
+    out.append((xy[-1], cum[-1]))
+    return out
+
+
+def drives(roads, a, bs, cutoff):
+    """shortest drives along the roads from candidate a to each candidate in bs: [(metres, [points]) or None]"""
+    _, (u1, v1), t1, q1 = a
+    L1 = roads.L[(u1, v1)]
+    targets = set()
+    for _, (u2, v2), _, _ in bs: targets |= {u2, v2}
+    found, prev = roads.dijkstra({u1: t1 * L1 * roads.f(v1, u1), v1: (1 - t1) * L1 * roads.f(u1, v1)}, targets, cutoff)
+    out = []
+    for _, (u2, v2), t2, q2 in bs:
+        L2 = roads.L[(u2, v2)]
+        if (u1, v1) == (u2, v2):                   # same street segment
+            c = (t2 - t1) * L1 * roads.f(u1, v1) if t2 >= t1 else (t1 - t2) * L1 * roads.f(v1, u1)
+            out.append((c, [q1, q2])); continue
+        best = None
+        for n, extra in ((u2, t2 * L2 * roads.f(u2, v2)), (v2, (1 - t2) * L2 * roads.f(v2, u2))):
+            if n in found and (best is None or found[n] + extra < best[0]):
+                best = (found[n] + extra, n)
+        if not best: out.append(None); continue
+        nodes = path_to(prev, best[1])
+        out.append((best[0], [q1] + [roads.xy[n] for n in nodes] + [q2]))
+    return out
+
+
+def match(roads, pts, cum):
+    obs = resample(pts, cum)
+    cands = [roads.candidates(p) for p, _ in obs]
+    out_pts, out_d = [], []
+
+    def emit(seq_pts, d0, d1):
+        """append points spread over timetable distance d0..d1 in proportion to their length"""
+        L = [0.0]
+        for a, b in zip(seq_pts, seq_pts[1:]): L.append(L[-1] + math.dist(a, b))
+        for p, l in zip(seq_pts, L):
+            d = d0 + (d1 - d0) * (l / L[-1] if L[-1] else 0)
+            if out_pts and math.dist(out_pts[-1], p) < 0.3: continue
+            out_pts.append(p); out_d.append(d)
+
+    i, matched = 0, 0
+    while i < len(obs):
+        if not cands[i]:
+            if i + 1 < len(obs): emit([obs[i][0], obs[i + 1][0]], obs[i][1], obs[i + 1][1])
+            else: emit([obs[i][0]], obs[i][1], obs[i][1])
+            i += 1; continue
+        # Viterbi along a run of points that can be chained on the roads
+        score = [-0.5 * (c[0] / SIGMA) ** 2 for c in cands[i]]
+        back, legs, j = [], [], i
+        while j + 1 < len(obs) and cands[j + 1]:
+            straight = math.dist(obs[j][0], obs[j + 1][0])
+            cutoff = straight * 3 + 60
+            nxt = cands[j + 1]
+            ns, nb, nl = [-1e18] * len(nxt), [None] * len(nxt), [None] * len(nxt)
+            for k, c1 in enumerate(cands[j]):
+                if score[k] < -1e17: continue
+                for q, r in enumerate(drives(roads, c1, nxt, cutoff)):
+                    if not r: continue
+                    s = score[k] - abs(r[0] - straight) / BETA - 0.5 * (nxt[q][0] / SIGMA) ** 2
+                    if s > ns[q]: ns[q], nb[q], nl[q] = s, k, r[1]
+            if max(ns) < -1e17: break              # can't continue on the roads: end this run here
+            score, back, legs, j = ns, back + [nb], legs + [nl], j + 1
+        # walk back the best chain
+        k = max(range(len(score)), key=lambda q: score[q]); chain = [k]
+        for nb in reversed(back): k = nb[k]; chain.append(k)
+        chain.reverse()
+        for s in range(len(chain) - 1):
+            leg = legs[s][chain[s + 1]]
+            straight = math.dist(obs[i + s][0], obs[i + s + 1][0])
+            L = sum(math.dist(a, b) for a, b in zip(leg, leg[1:]))
+            if L > straight * 1.8 + 25:            # a detour the bus can't be making: keep the outline
+                leg = [obs[i + s][0], obs[i + s + 1][0]]
+            else:
+                matched += 1
+            emit(leg, obs[i + s][1], obs[i + s + 1][1])
+        if len(chain) == 1: emit([cands[i][chain[0]][3]], obs[i][1], obs[i][1])
+        # bridge to the next run with the original outline
+        if j + 1 < len(obs): emit([out_pts[-1], obs[j + 1][0]], out_d[-1], obs[j + 1][1])
+        i = j + 1
+    return out_pts, out_d, matched / max(1, len(obs) - 1)
+
+
+def despike(pts, ds):
+    """remove short out-and-back spikes (a match that pokes into a side street and returns)"""
+    changed = True
+    while changed and len(pts) > 2:
+        changed = False; P, D = [pts[0]], [ds[0]]
+        for k in range(1, len(pts) - 1):
+            a, b, c = P[-1], pts[k], pts[k + 1]
+            ux, uy, vx, vy = b[0] - a[0], b[1] - a[1], c[0] - b[0], c[1] - b[1]
+            la, lb = math.hypot(ux, uy), math.hypot(vx, vy)
+            if la and lb and (ux * vx + uy * vy) / (la * lb) < -0.8 and min(la, lb) < 40:
+                changed = True; continue
+            P.append(b); D.append(ds[k])
+        P.append(pts[-1]); D.append(ds[-1]); pts, ds = P, D
+    return pts, ds
+
+
+def simplify(pts, ds, tol=0.7):
+    """Douglas-Peucker, keeping each kept point's distance"""
+    keep = [False] * len(pts); keep[0] = keep[-1] = True; stack = [(0, len(pts) - 1)]
+    while stack:
+        a, b = stack.pop(); (x1, y1), (x2, y2) = pts[a], pts[b]; dx, dy = x2 - x1, y2 - y1; L = math.hypot(dx, dy)
+        far, fd = None, tol
+        for k in range(a + 1, b):
+            x, y = pts[k]
+            d = abs(dy * (x - x1) - dx * (y - y1)) / L if L else math.dist(pts[k], pts[a])
+            if d > fd: far, fd = k, d
+        if far is not None:
+            keep[far] = True; stack += [(a, far), (far, b)]
+    return [p for p, k in zip(pts, keep) if k], [d for d, k in zip(ds, keep) if k]
+
+
+def main(data_path, pm_path):
+    data = json.load(open(data_path, encoding='utf-8'))
+    shapes = [(dec_poly(p), dd) for p, dd in data['shapes']]
+    allp = [q for pts, _ in shapes for q in pts]
+    bbox = (min(p[0] for p in allp) - .005, min(p[1] for p in allp) - .007,
+            max(p[0] for p in allp) + .005, max(p[1] for p in allp) + .007)
+    roads = Roads(pm_path, bbox)
+    print('road network: %d junctions and bends, %d street segments' % (len(roads.xy), len(roads.L)))
+    out, fr = [], []
+    for n, (pts, dd) in enumerate(shapes):
+        cum = []; a = 0
+        for d in dd: a += d; cum.append(a)
+        mp, md, f = match(roads, pts, cum)
+        mp, md = simplify(*despike(mp, md))
+        md = [max(0, round(d)) for d in md]
+        for k in range(1, len(md)): md[k] = max(md[k], md[k - 1])   # never backwards
+        out.append([enc_poly([unm(*p) for p in mp]), [md[0]] + [md[k] - md[k - 1] for k in range(1, len(md))]])
+        fr.append(f)
+        print('route outline %2d: %4d -> %4d points, %3d%% on the roads' % (n, len(pts), len(mp), round(f * 100)))
+    data['shapes'] = out
+    data['matched'] = 1
+    json.dump(data, open(data_path, 'w', encoding='utf-8'), separators=(',', ':'), ensure_ascii=False)
+    print('matched %d route outlines, %.0f%% of their length on the roads' % (len(out), 100 * sum(fr) / len(fr)))
+
+
+if __name__ == '__main__':
+    if len(sys.argv) < 2: sys.exit(__doc__)
+    main(sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else os.path.join(HERE, '..', 'map', 'burgos.pmtiles'))
