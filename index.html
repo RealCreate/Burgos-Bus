@@ -1217,8 +1217,8 @@ body{font:16px/1.4 var(--font-body);-webkit-font-smoothing:antialiased;letter-sp
 (function(){
 "use strict";
 const STANDALONE = true;
-const BUILD = '02 Nov 00:34';
-const BUILD_ID = '1793576087';
+const BUILD = '02 Nov 00:37';
+const BUILD_ID = '1793576235';
 /* The street map is the site's own: an OpenStreetMap extract of Burgos only (map/burgos.pmtiles, built by
    .github/workflows/build-map.yml), drawn on the phone by protomaps-leaflet. MAP_BOUNDS is the box that file
    covers; the map can't be dragged or zoomed out beyond it. Keep it in step with BBOX in that workflow.
@@ -3272,7 +3272,10 @@ function onSearch(e){
 }
 view.addEventListener('input',onSearch);
 view.addEventListener('compositionend',onSearch);
-view.addEventListener('change',e=>{ if(e.target.id==='ptime'&&e.target.value){ const [hh,mm]=e.target.value.split(':').map(Number); plan.leave=hh*3600+mm*60; runPlan(); } });
+view.addEventListener('change',e=>{ if(e.target.id!=='ptime') return;
+  /* a time picks "leave at"; clearing it (iPhone's Reset button) goes back to "leave now" */
+  if(e.target.value){ const [hh,mm]=e.target.value.split(':').map(Number); plan.leave=hh*3600+mm*60; } else plan.leave=null;
+  runPlan(); });
 $('#day').addEventListener('change',e=>{st.day=+e.target.value;render(true);drawBuses();refreshStopPopup()});
 
 applyStatic(); buildDays(); tickClock(); updHdr(); initMap(); applyStatic();

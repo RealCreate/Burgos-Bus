@@ -2215,7 +2215,10 @@ function onSearch(e){
 }
 view.addEventListener('input',onSearch);
 view.addEventListener('compositionend',onSearch);
-view.addEventListener('change',e=>{ if(e.target.id==='ptime'&&e.target.value){ const [hh,mm]=e.target.value.split(':').map(Number); plan.leave=hh*3600+mm*60; runPlan(); } });
+view.addEventListener('change',e=>{ if(e.target.id!=='ptime') return;
+  /* a time picks "leave at"; clearing it (iPhone's Reset button) goes back to "leave now" */
+  if(e.target.value){ const [hh,mm]=e.target.value.split(':').map(Number); plan.leave=hh*3600+mm*60; } else plan.leave=null;
+  runPlan(); });
 $('#day').addEventListener('change',e=>{st.day=+e.target.value;render(true);drawBuses();refreshStopPopup()});
 
 applyStatic(); buildDays(); tickClock(); updHdr(); initMap(); applyStatic();
