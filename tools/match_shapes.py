@@ -195,6 +195,9 @@ class Roads:
         self.adj = defaultdict(dict)      # node -> {node: cost of driving that way, metres}
         self.L = {}                       # (node, node) sorted -> length, metres
         self.slow = {}                    # (node, node) sorted -> extra cost factor (service roads)
+        self.level = {}                   # (node, node) sorted -> 'bridge' / 'tunnel' (never joined to crossings)
+        self._link = []
+        self.at = {}                      # rounded point -> junction node made by add_junctions
         self.xy = {}                      # node -> (x, y) metres
         lat0, lon0, lat1, lon1 = bbox
         xa, ya = ll_to_world(lat1, lon0); xb, yb = ll_to_world(lat0, lon1)
@@ -207,12 +210,90 @@ class Roads:
                     if data[:2] == b'\x1f\x8b': data = gzip.decompress(data)
                     self.add_tile(tx, ty, data)
         self.join_tile_edges()
+        self.add_junctions()
         self.grid = defaultdict(list)     # 40 m cells -> edges
         for (u, v) in self.L:
                     (x1, y1), (x2, y2) = self.xy[u], self.xy[v]
                     for cx in range(int(min(x1, x2) // 40), int(max(x1, x2) // 40) + 1):
                         for cy in range(int(min(y1, y2) // 40), int(max(y1, y2) // 40) + 1):
                             self.grid[(cx, cy)].append((u, v))
+
+    def split(self, u, v, pts):
+        """split street piece u-v at points pts (sorted from u to v); returns the new nodes"""
+        key = (min(u, v), max(u, v)); cf, cb = self.adj[u].pop(v), self.adj[v].pop(u)
+        L = self.L.pop(key); sl = self.slow.pop(key, None); lv = self.level.pop(key, None)
+        fu, fb = cf / L if L else 1, cb / L if L else 1
+        chain = [u]
+        for p in pts:
+            n = self.at.get((round(p[0], 1), round(p[1], 1)))
+            if n is None:                              # a new junction: keys after every map node
+                n = (10 ** 9 + len(self.at), 0); self.xy[n] = p; self.at[(round(p[0], 1), round(p[1], 1))] = n
+            if n != chain[-1]: chain.append(n)
+        if v != chain[-1]: chain.append(v)
+        for a, b in zip(chain, chain[1:]):
+            d = math.dist(self.xy[a], self.xy[b]); k = (min(a, b), max(a, b))
+            self.adj[a][b] = min(d * fu, self.adj[a].get(b, 1e18)); self.adj[b][a] = min(d * fb, self.adj[b].get(a, 1e18))
+            self.L[k] = d
+            if sl: self.slow[k] = sl
+            if lv: self.level[k] = lv
+        return chain[1:-1]
+
+    def add_junctions(self):
+        """Simplifying a road's shape for the map can drop the point where it meets another road, so roads
+        that visibly cross or meet aren't connected. Join (except bridges and tunnels):
+          * pieces that cross each other, at the crossing point;
+          * a dead end within 4 m of another road, to the nearest point of that road."""
+        cell = defaultdict(set)
+        for (u, v) in self.L:
+            (x1, y1), (x2, y2) = self.xy[u], self.xy[v]
+            for cx in range(int(min(x1, x2) // 25), int(max(x1, x2) // 25) + 1):
+                for cy in range(int(min(y1, y2) // 25), int(max(y1, y2) // 25) + 1):
+                    cell[(cx, cy)].add((u, v))
+        cuts = defaultdict(list)                       # piece -> [(t, point)]
+        seen = set()
+        for es in cell.values():
+            es = list(es)
+            for i in range(len(es)):
+                a = es[i]
+                if a in self.level: continue
+                for b in es[i + 1:]:
+                    if b in self.level or (a, b) in seen: continue
+                    seen.add((a, b))
+                    if set(a) & set(b): continue
+                    p1, p2, p3, p4 = self.xy[a[0]], self.xy[a[1]], self.xy[b[0]], self.xy[b[1]]
+                    d = (p2[0] - p1[0]) * (p4[1] - p3[1]) - (p2[1] - p1[1]) * (p4[0] - p3[0])
+                    if abs(d) < 1e-9: continue
+                    t = ((p3[0] - p1[0]) * (p4[1] - p3[1]) - (p3[1] - p1[1]) * (p4[0] - p3[0])) / d
+                    w = ((p3[0] - p1[0]) * (p2[1] - p1[1]) - (p3[1] - p1[1]) * (p2[0] - p1[0])) / d
+                    if 0 < t < 1 and 0 < w < 1:
+                        q = (p1[0] + t * (p2[0] - p1[0]), p1[1] + t * (p2[1] - p1[1]))
+                        cuts[a].append((t, q)); cuts[b].append((w, q))
+        # dead ends close to another road
+        for n in [n for n in self.adj if len(self.adj[n]) == 1]:
+            x, y = self.xy[n]; own = next(iter(self.adj[n])); best = None
+            for e in cell.get((int(x // 25), int(y // 25)), ()):
+                if n in e or own in e or e in self.level: continue
+                (x1, y1), (x2, y2) = self.xy[e[0]], self.xy[e[1]]; dx, dy = x2 - x1, y2 - y1; L2 = dx * dx + dy * dy
+                t = max(0.0, min(1.0, ((x - x1) * dx + (y - y1) * dy) / L2)) if L2 else 0
+                q = (x1 + t * dx, y1 + t * dy); dd = math.dist(q, (x, y))
+                if dd <= 4 and (best is None or dd < best[0]): best = (dd, e, t, q)
+            if best:
+                dd, e, t, q = best
+                if 0.02 < t < 0.98: cuts[e].append((t, q)); self._link.append((n, q))
+                else: self._link.append((n, self.xy[e[0] if t <= .02 else e[1]]))
+        made = 0
+        for e, ps in cuts.items():
+            if e not in self.L: continue
+            ps.sort(); self.split(e[0], e[1], [q for _, q in ps]); made += len(ps)
+        # connect the dead ends to the points made for them
+        index = dict(self.at)
+        for n, p in self.xy.items(): index.setdefault((round(p[0], 1), round(p[1], 1)), n)
+        for n, q in self._link:
+            k = index.get((round(q[0], 1), round(q[1], 1)))
+            if k is None or k == n or n not in self.adj or k not in self.adj: continue
+            d = math.dist(self.xy[n], self.xy[k]); key = (min(n, k), max(n, k))
+            self.adj[n][k] = self.adj[k][n] = max(d, .1); self.L[key] = max(d, .1); made += 1
+        self.junctions = made
 
     def join_tile_edges(self, tol=2.0):
         """Each map tile stores its own copy of a road, rounded to its own grid, so where a road crosses from
@@ -308,6 +389,8 @@ class Roads:
                         self.adj[v][u] = min(cb, self.adj[v].get(u, 1e18))
                         self.L[(min(u, v), max(u, v))] = d
                         if props.get('kind_detail') == 'service': self.slow[(min(u, v), max(u, v))] = 1.5
+                        if props.get('is_bridge') or props.get('is_tunnel'):
+                            self.level[(min(u, v), max(u, v))] = 'bridge' if props.get('is_bridge') else 'tunnel'
 
     def f(self, a, b):
         """cost per metre of driving the street segment a -> b"""
