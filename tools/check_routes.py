@@ -4,6 +4,7 @@ Checks every route outline in the built site (index.html) against the roads of m
   off-road   a stretch of route more than 7 m from any road (it's cutting a corner or across a block)
   spike      the route turns back on itself (out and back along the same street)
   step       a sideways jog: two sharp opposite turns close together (a zig-zag between lanes)
+  switch     over ~120 m of straight road, the route moves 6-40 m sideways and back (into a parallel road)
   strays     the route is far from the city's own outline (matched to the wrong street)
 
 Usage:  python3 tools/check_routes.py [index.html] [--orig ORIGINAL.json]
@@ -92,6 +93,30 @@ def check(data, roads, orig=None):
                 if abs(t) > math.radians(55) and abs(t2) > math.radians(55) and t * t2 < 0 \
                         and abs(t + t2) < math.radians(35) and min(l1, math.dist(*segs[k + 2])) > 8:
                     found.append(('step', l2, n, tag, segs[k + 1][0]))
+        # lane switch: the route turns aside, runs parallel 5-40 m from its line and turns back to its old
+        # direction, all within ~80 m (an S-shaped jog into a parallel road and out again)
+        step_ = 5
+        P_ = [sm[0]]; acc = 0.0
+        for a_, b_ in zip(sm, sm[1:]):
+            acc += math.dist(a_, b_)
+            if acc >= step_: P_.append(b_); acc = 0.0
+        def hd(k):
+            a_, b_ = P_[max(0, k - 2)], P_[min(len(P_) - 1, k + 2)]
+            return math.atan2(b_[1] - a_[1], b_[0] - a_[0])
+        def dang(x, y): return abs((x - y + math.pi) % (2 * math.pi) - math.pi)
+        k = 8
+        while k < len(P_) - 18:
+            base = math.atan2(P_[k][1] - P_[k - 8][1], P_[k][0] - P_[k - 8][0])
+            if dang(hd(k + 1), base) > math.radians(20):
+                for e in range(k + 3, min(len(P_) - 2, k + 17)):
+                    if dang(math.atan2(P_[e + 2][1] - P_[e][1], P_[e + 2][0] - P_[e][0]), base) < math.radians(8):
+                        a_ = P_[k]; ux, uy = math.cos(base), math.sin(base)
+                        off = abs(-uy * (P_[e][0] - a_[0]) + ux * (P_[e][1] - a_[1]))
+                        mid = P_[(k + e) // 2]
+                        real = orig_xy is not None and poly_dist(list(zip(orig_xy, orig_xy[1:])), mid) < max(8, off * .5)
+                        if 5 < off < 40 and not real: found.append(('switch', off, n, tag, mid))
+                        k = e; break
+            k += 1
         if orig is not None:
             oxy = [M.m(*p) for p in M.dec_poly(orig['shapes'][n][0])]
             osegs = list(zip(oxy, oxy[1:]))
@@ -101,7 +126,7 @@ def check(data, roads, orig=None):
                 if run: found.append(('strays', len(run) * 20, n, tag, run[len(run) // 2]))
                 run = []
     # one entry per place: merge problems within 40 m
-    rank = {'strays': 0, 'off-road': 1, 'spike': 2, 'step': 3}
+    rank = {'strays': 0, 'off-road': 1, 'spike': 2, 'switch': 3, 'step': 4}
     found.sort(key=lambda f: (rank[f[0]], -f[1]))
     places = []
     for f in found:

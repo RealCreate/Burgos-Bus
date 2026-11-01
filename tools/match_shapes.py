@@ -460,7 +460,7 @@ def path_to(prev, n):
 BREAKS = []                 # where no legal drive was found (for checking)
 ANCHOR = 120                # metres between anchors
 CORRIDORS = (45, 110, 260)  # metres: corridors tried in turn
-DEV = 11                    # metres: straying this far from the outline doubles a street's cost
+DEV = 7                     # metres: straying this far from the outline doubles a street's cost
 AGAINST = 6                 # cost factor for driving against the outline's direction
 
 
@@ -517,7 +517,7 @@ def turn_cost(roads, a, b, c):
     ux, uy, vx, vy = bx - ax, by - ay, cx - bx, cy - by; lu, lv = math.hypot(ux, uy), math.hypot(vx, vy)
     if not lu or not lv: return 0
     cosang = (ux * vx + uy * vy) / (lu * lv)
-    return 0 if cosang > 0.87 else 6 if cosang > 0.2 else 20 if cosang > -0.6 else 60
+    return 0 if cosang > 0.94 else 12 if cosang > 0.5 else 30 if cosang > -0.3 else 50 if cosang > -0.8 else 90
 
 
 def drives(roads, cor, a, bs, cutoff):
@@ -731,7 +731,7 @@ def main(data_path, pm_path):
         mp, md, f = match(roads, pts, cum, ends.get(n, (None, None)))
         mp, md = despike(mp, md)
         mp, md = drop_collinear(mp, md, 0.05)      # anchor points in the middle of a street
-        mp, md = smooth(*smooth(mp, md, 5.0), 2.5)
+        mp, md = smooth(*smooth(*smooth(mp, md, 8.0), 4.0), 2.0)
         mp, md = drop_collinear(mp, md, 0.25)
         md = [max(0, round(d)) for d in md]
         for k in range(1, len(md)): md[k] = max(md[k], md[k - 1])   # never backwards
