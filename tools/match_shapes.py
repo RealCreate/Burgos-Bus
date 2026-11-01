@@ -367,7 +367,9 @@ class Roads:
     def add_tile(self, tx, ty, data):
         x0, y0 = tx * 4096, ty * 4096
         for props, lines in road_lines(data):
-            if props.get('kind') in SKIP_KINDS: continue
+            # pedestrian streets and squares: some are driven by buses (Plaza Real, Villalonquéjar), at a cost
+            plaza = props.get('kind') == 'path' and props.get('kind_detail') == 'pedestrian'
+            if props.get('kind') in SKIP_KINDS and not plaza: continue
             ow = str(props.get('oneway', '')).lower()
             fwd_only, back_only = ow in ('yes', 'true', '1'), ow == '-1'
             for line in lines:
@@ -389,6 +391,7 @@ class Roads:
                         self.adj[v][u] = min(cb, self.adj[v].get(u, 1e18))
                         self.L[(min(u, v), max(u, v))] = d
                         if props.get('kind_detail') == 'service': self.slow[(min(u, v), max(u, v))] = 1.5
+                        if plaza: self.slow[(min(u, v), max(u, v))] = 3
                         if props.get('is_bridge') or props.get('is_tunnel'):
                             self.level[(min(u, v), max(u, v))] = 'bridge' if props.get('is_bridge') else 'tunnel'
 
@@ -562,7 +565,7 @@ def drives(roads, cor, a, bs, cutoff):
     return out
 
 
-def match(roads, pts, cum):
+def match(roads, pts, cum, ends=(None, None)):
     xy = [m(*p) for p in pts]
     anchors = resample(xy, cum, ANCHOR)
     fine = resample(xy, cum, 8)
@@ -581,6 +584,18 @@ def match(roads, pts, cum):
         return out
 
     C = [cands(i) for i in range(len(anchors))]
+    # A route begins and ends at a stop. Both ends are pinned to the road point nearest that stop, so the
+    # route arriving at a terminus and the one leaving it meet exactly there, with no gap.
+    for k, stop in ((0, ends[0]), (len(anchors) - 1, ends[1])):
+        if stop is None: continue
+        sp = m(*stop)
+        if math.dist(sp, anchors[k][0]) > 90: continue
+        cs = roads.candidates(sp)
+        if not cs: continue
+        d, (u, v), t, q = cs[0]
+        hx, hy = heading(anchors[k][1]); ex, ey = roads.xy[v][0] - roads.xy[u][0], roads.xy[v][1] - roads.xy[u][1]
+        C[k] = [(0.0,) + (((u, v), t) if ex * hx + ey * hy >= 0 else ((v, u), 1 - t)) + (q,)]
+        anchors[k] = (q,) + tuple(anchors[k][1:])
     out_pts, out_d = [], []
 
     def emit(seq, d0, d1):
@@ -653,6 +668,36 @@ def despike(pts, ds):
     return pts, ds
 
 
+def smooth(pts, ds, cap=5.0):
+    """Round off corners (Chaikin): each segment keeps its middle, and its ends are cut back by a quarter of
+    its length, at most `cap` metres. Each new point depends only on its own segment, so two routes along
+    the same streets get exactly the same points."""
+    if len(pts) < 3: return pts, ds
+    P, D = [pts[0]], [ds[0]]
+    for (a, da), (b, db) in zip(zip(pts, ds), zip(pts[1:], ds[1:])):
+        L = math.dist(a, b)
+        if L < 1e-6: continue
+        f = min(0.25, cap / L)
+        for g in (f, 1 - f):
+            P.append((a[0] + (b[0] - a[0]) * g, a[1] + (b[1] - a[1]) * g)); D.append(da + (db - da) * g)
+    P.append(pts[-1]); D.append(ds[-1])
+    return P, D
+
+
+def drop_collinear(pts, ds, tol=0.25):
+    """remove points lying within `tol` metres of the line through their two neighbours (local, deterministic)"""
+    P, D = [pts[0]], [ds[0]]
+    for k in range(1, len(pts) - 1):
+        a, b, c = P[-1], pts[k], pts[k + 1]
+        dx, dy = c[0] - a[0], c[1] - a[1]; L = math.hypot(dx, dy)
+        if L and abs(dy * (b[0] - a[0]) - dx * (b[1] - a[1])) / L <= tol and \
+                (b[0] - a[0]) * dx + (b[1] - a[1]) * dy >= 0 and (c[0] - b[0]) * dx + (c[1] - b[1]) * dy >= 0:
+            continue
+        P.append(b); D.append(ds[k])
+    P.append(pts[-1]); D.append(ds[-1])
+    return P, D
+
+
 def simplify(pts, ds, tol=1.6):
     """Douglas-Peucker, keeping each kept point's distance"""
     keep = [False] * len(pts); keep[0] = keep[-1] = True; stack = [(0, len(pts) - 1)]
@@ -676,12 +721,18 @@ def main(data_path, pm_path):
             max(p[0] for p in allp) + .005, max(p[1] for p in allp) + .007)
     roads = Roads(pm_path, bbox)
     print('road network: %d junctions and bends, %d street segments' % (len(roads.xy), len(roads.L)))
+    stops = data['stops']; ends = {}
+    for pt in data['patterns']:
+        ends.setdefault(pt[3], (tuple(stops[pt[4][0]][2:4]), tuple(stops[pt[4][-1]][2:4])))
     out, fr = [], []
     for n, (pts, dd) in enumerate(shapes):
         cum = []; a = 0
         for d in dd: a += d; cum.append(a)
-        mp, md, f = match(roads, pts, cum)
-        mp, md = simplify(*despike(mp, md))
+        mp, md, f = match(roads, pts, cum, ends.get(n, (None, None)))
+        mp, md = despike(mp, md)
+        mp, md = drop_collinear(mp, md, 0.05)      # anchor points in the middle of a street
+        mp, md = smooth(*smooth(mp, md, 5.0), 2.5)
+        mp, md = drop_collinear(mp, md, 0.25)
         md = [max(0, round(d)) for d in md]
         for k in range(1, len(md)): md[k] = max(md[k], md[k - 1])   # never backwards
         out.append([enc_poly([unm(*p) for p in mp]), [md[0]] + [md[k] - md[k - 1] for k in range(1, len(md))]])
