@@ -53,6 +53,12 @@ def main(src):
 
     page = open(os.path.join(HERE, 'template.html'), encoding='utf-8').read()
     page = page.replace('__LEAFLET_CSS__', css).replace('__STANDALONE__', 'true')
+    # The map file's build date, so a rebuilt map gets a new address and phones don't mix old and new pieces.
+    try:
+        map_version = open(os.path.join(ROOT, 'map', 'BUILD_DATE'), encoding='utf-8').read().strip()
+    except OSError:
+        map_version = '0'
+    page = page.replace('__MAP_VERSION__', map_version)
     i18n = open(os.path.join(HERE, 'i18n.js'), encoding='utf-8').read()
     i18n = json.loads(re.sub(r'^\s*/\*.*?\*/', '', i18n, flags=re.S))
     keys = set(i18n['en'])

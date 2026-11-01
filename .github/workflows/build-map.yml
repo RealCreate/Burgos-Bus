@@ -4,14 +4,12 @@
 # (buildings, roads, parks, water, street names), so nothing outside the city is in the file
 # and the site never depends on an outside map server.
 #
-# It runs by itself when this file changes, and by hand from the Actions tab
-# (Build map -> Run workflow) when you want fresher map data, e.g. after new streets open.
+# Run it by hand from the Actions tab (Build map -> Run workflow) when you want fresher map data,
+# e.g. after new streets open.
 # Each run replaces the file (a few MB), so there's no need to run it often.
 name: Build map
 
 on:
-  push:
-    paths: ['.github/workflows/build-map.yml']
   workflow_dispatch:
 
 permissions:
@@ -26,9 +24,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      # west,south,east,north: every line and stop with about 1.5 km to spare.
-      # Keep in step with MAP_BOUNDS in tools/template.html.
-      BBOX: '-3.80,42.31,-3.58,42.40'
+      # west,south,east,north: every line and stop, with enough countryside around them to fill a
+      # phone screen when the whole city is in view. Keep in step with MAP_BOUNDS in tools/template.html.
+      BBOX: '-3.86,42.25,-3.52,42.46'
     steps:
       - uses: actions/checkout@v4
 
@@ -64,11 +62,19 @@ jobs:
           if [ "$size" -lt 500000 ]; then echo "File looks too small"; exit 1; fi
           echo "${{ steps.src.outputs.date }}" > map/BUILD_DATE
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # The page carries the map's build date in the map's address, so rebuild it too.
+      - name: Rebuild the page
+        run: python3 tools/build_site.py --keep-data
+
       - name: Publish
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898299+github-actions[bot]@users.noreply.github.com'
-          git add map/burgos.pmtiles map/BUILD_DATE
+          git add map/burgos.pmtiles map/BUILD_DATE index.html
           if git diff --cached --quiet; then echo "Map unchanged"; exit 0; fi
           git commit -m "Map: OpenStreetMap data for Burgos from Protomaps build ${{ steps.src.outputs.date }}"
           git push
