@@ -1217,8 +1217,8 @@ body{font:16px/1.4 var(--font-body);-webkit-font-smoothing:antialiased;letter-sp
 (function(){
 "use strict";
 const STANDALONE = true;
-const BUILD = '02 Nov 00:38';
-const BUILD_ID = '1793576291';
+const BUILD = '02 Nov 00:50';
+const BUILD_ID = '1793577026';
 /* The street map is the site's own: an OpenStreetMap extract of Burgos only (map/burgos.pmtiles, built by
    .github/workflows/build-map.yml), drawn on the phone by protomaps-leaflet. MAP_BOUNDS is the box that file
    covers; the map can't be dragged or zoomed out beyond it. Keep it in step with BBOX in that workflow.
@@ -2697,8 +2697,8 @@ function liveKick(){ clearTimeout(kickTimer); kickTimer=setTimeout(()=>livePoll(
 /* ---------- route planner ----------
    Plans a trip from a place, address, stop, your location or a point on the map to another, the way a
    journey planner does: walk to a stop, take a bus, change if needed (up to two changes), walk to the
-   destination. The search is RAPTOR (round-based: round 1 = direct buses, round 2 = one change, round 3 =
-   two changes) over today's timetable, run on the phone. Live arrival times at the stops near the start
+   destination. The search is Range RAPTOR (round 1 = direct buses, round 2 = one change, round 3 = two
+   changes, tried for every departure in the next two hours) over today's timetable, run on the phone. Live arrival times at the stops near the start
    replace the timetable for the first bus, so a later scheduled bus that is running early, or a further stop
    with a sooner bus, can come out on top. Several options are offered, by arrival time, and you pick one. */
 const WALK_MS=1.25, DETOUR=1.25, MAX_WALK=1000, MAX_WALK_FAR=1600, XFER_M=300, MAX_ROUNDS=3, XFER_BUF=60;
@@ -2854,52 +2854,82 @@ function liveDelays(c){
       if(best&&!del.has(best.key)) del.set(best.key,best.d); } }
   return del;
 }
-function raptor(o,dst,dep,c,del,maxWalk){
-  const N=S.length, INF=1e15, best=new Float64Array(N).fill(INF), rounds=[], key=c.key;
-  const arr0=new Float64Array(N).fill(INF), par0=new Array(N), marked=new Set();
+/* Range RAPTOR. Plain RAPTOR answers one question: leaving at time X, what's the earliest arrival (round 1 =
+   direct buses, round 2 = one change, round 3 = two)? Range RAPTOR asks it for every departure worth
+   considering in a window (each time a bus can be caught from a stop near the start), latest first, keeping
+   what it learnt from the later departures. A journey is kept only if it gets there sooner than anything
+   leaving later, or with fewer changes - so the result is every sensible trade-off between leaving later,
+   arriving sooner and changing less, and each one leaves as late as it can. */
+const WINDOW=7200;
+function raptor(o,dst,dep0,c,del,maxWalk){
+  const N=S.length, INF=1e15, K=MAX_ROUNDS, key=c.key;
   const oS=walkStops(o.lat,o.lon,maxWalk), dS=walkStops(dst.lat,dst.lon,maxWalk);
   if(o.stop!=null&&!oS.some(x=>x[0]===o.stop)) oS.unshift([o.stop,0]);
   if(dst.stop!=null&&!dS.some(x=>x[0]===dst.stop)) dS.unshift([dst.stop,0]);
-  for(const [s,d] of oS){ const t=dep+walkSec(d); arr0[s]=t; best[s]=t; par0[s]={w:'start',d}; marked.add(s); }
-  rounds.push({arr:arr0,par:par0});
+  if(!oS.length||!dS.length) return [];
   const at=(p,t,i)=>t.start+t.prof[i]+(del.get(p.id+'|'+t.start)||0);
-  const out=[];
-  let target=INF;
-  for(let k=1;k<=MAX_ROUNDS&&marked.size;k++){
-    const prev=rounds[k-1].arr, cur=Float64Array.from(prev), cp=new Array(N), qp=new Map();
-    for(const s of marked) for(const {p,k:ix} of stopRefs[s]){ const e=qp.get(p); if(e==null||ix<e) qp.set(p,ix); }
-    marked.clear(); const improved=new Set();
-    for(const [p,from] of qp){
-      const trips=tripsOn(p,key); if(!trips.length) continue;
-      let trip=null, bi=-1;
-      for(let i=from;i<p.s.length;i++){
-        const s=p.s[i], closed=stopClosed(s,p.r,key);
-        if(trip&&!closed){ const ta=at(p,trip,i); if(ta<best[s]&&ta<target){ cur[s]=ta; best[s]=ta; cp[s]={w:'bus',p,t:trip,bi,ai:i}; improved.add(s); } }
-        if(prev[s]<INF&&!closed&&i<p.s.length-1){
-          const need=prev[s]+(k>1?XFER_BUF:0);
-          if(!trip||at(p,trip,i)>=need){ let cand=null;
-            for(const t of trips){ const tt=at(p,t,i); if(tt>=need&&(!cand||tt<at(p,cand,i))) cand=t; if(t.start>need+3600) break; }
-            if(cand&&(!trip||at(p,cand,i)<at(p,trip,i))){ trip=cand; bi=i; } }
+  /* the departures to try: the moments to leave to catch each bus at a stop near the start, by the minute.
+     With nothing in the next two hours (at night) the window starts at the first bus instead. */
+  const leaves=[];
+  for(const [s,d] of oS) for(const {p,k} of stopRefs[s]){ if(k>=p.s.length-1||stopClosed(s,p.r,key)) continue;
+    for(const t of tripsOn(p,key)) leaves.push(at(p,t,k)-walkSec(d)); }
+  let lo=dep0; const first=Math.min(...leaves.filter(t=>t>=dep0));
+  if(!isFinite(first)) return [];
+  if(first>dep0+WINDOW) lo=first;
+  const run=cands=>{
+  const arr=[], par=[]; for(let k=0;k<=K;k++){ arr.push(new Float64Array(N).fill(INF)); par.push(new Array(N)); }
+  const best=new Float64Array(N).fill(INF), tBest=new Array(K+1).fill(INF), out=[];
+  for(const dep of cands){
+    let marked=new Set();
+    for(const [s,d] of oS){ const t=dep+walkSec(d); if(t<arr[0][s]){ arr[0][s]=t; par[0][s]={w:'start',d}; if(t<best[s]) best[s]=t; marked.add(s); } }
+    for(let k=1;k<=K&&marked.size;k++){
+      const prev=arr[k-1], cur=arr[k], cp=par[k], target=Math.min(...tBest), qp=new Map();
+      for(const s of marked) for(const {p,k:ix} of stopRefs[s]){ const e=qp.get(p); if(e==null||ix<e) qp.set(p,ix); }
+      const improved=new Set();
+      for(const [p,from] of qp){
+        const trips=tripsOn(p,key); if(!trips.length) continue;
+        let trip=null, bi=-1;
+        for(let i=from;i<p.s.length;i++){
+          const s=p.s[i], closed=stopClosed(s,p.r,key);
+          if(trip&&!closed){ const ta=at(p,trip,i); if(ta<best[s]&&ta<target&&ta<cur[s]){ cur[s]=ta; best[s]=ta; cp[s]={w:'bus',p,t:trip,bi,ai:i}; improved.add(s); } }
+          if(prev[s]<INF&&!closed&&i<p.s.length-1){
+            const need=prev[s]+(k>1?XFER_BUF:0);
+            if(!trip||at(p,trip,i)>=need){ let cand=null;
+              for(const t of trips){ const tt=at(p,t,i); if(tt>=need&&(!cand||tt<at(p,cand,i))) cand=t; if(t.start>need+3600) break; }
+              if(cand&&(!trip||at(p,cand,i)<at(p,trip,i))){ trip=cand; bi=i; } }
+          }
         }
       }
+      marked=new Set();
+      for(const s of improved){ marked.add(s);
+        for(const [q,d] of footpaths()[s]){ const t=cur[s]+walkSec(d); if(t<cur[q]&&t<best[q]){ cur[q]=t; best[q]=t; cp[q]={w:'walk',from:s,d}; marked.add(q); } } }
+      /* the destination: a journey with k buses is new if it gets there sooner than any found so far with
+         k buses or fewer (those all leave later, or at the same time) */
+      let bj=null; for(const [s,d] of dS){ const pr=cp[s]; if(!pr||pr.w!=='bus'||!improved.has(s)) continue; const t=cur[s]+walkSec(d); if(!bj||t<bj.t) bj={t,s,d}; }
+      if(bj&&bj.t<Math.min(...tBest.slice(0,k+1))){ tBest[k]=bj.t; const legs=rebuild(arr,par,k,bj,o,dst,at); if(legs) out.push(legs); }
     }
-    for(const s of improved){ marked.add(s);
-      for(const [q,d] of footpaths()[s]){ const t=cur[s]+walkSec(d); if(t<cur[q]&&t<best[q]){ cur[q]=t; best[q]=t; cp[q]={w:'walk',from:s,d}; marked.add(q); } } }
-    rounds.push({arr:cur,par:cp});
-    let bj=null; for(const [s,d] of dS){ if(!cp[s]||cp[s].w!=='bus') continue;  /* walk straight from the stop you get off at */ const t=cur[s]+walkSec(d); if(!bj||t<bj.t) bj={t,s,d}; }
-    if(bj){ target=Math.min(target,bj.t); out.push(rebuild(rounds,k,bj,o,dst)); }
   }
-  return out;
+  return {out,arrive:Math.min(...tBest)};
+  };
+  /* the window runs at least two hours, and on to the earliest arrival when leaving straight away (when
+     buses are rare, like to the airport, the trip that gets there first may leave hours later) */
+  const quick=run([lo]), hi=Math.max(lo+WINDOW,isFinite(quick.arrive)?quick.arrive:0);
+  return run([...new Set(leaves.filter(t=>t>=lo&&t<=hi).map(t=>Math.floor(t/60)*60))].sort((a,b)=>b-a)).out;
 }
-function rebuild(rounds,k,bj,o,dst){
-  const legs=[{t:'walk',d:bj.d,to:dst,fromStop:bj.s,end:bj.t}]; let s=bj.s, r=k, guard=0;
+/* the journey behind a label, walking back from the destination; at each stop where a bus was caught it
+   takes the label with the fewest buses that still makes that bus */
+function rebuild(arr,par,k,bj,o,dst,at){
+  const legs=[{t:'walk',d:bj.d,to:dst,fromStop:bj.s}]; let s=bj.s, r=k, guard=0;
   while(guard++<20){
-    let pr=rounds[r].par[s]; while(!pr&&r>0){ r--; pr=rounds[r].par[s]; }
-    if(!pr||pr.w==='start'){ legs.push({t:'walk',d:pr?pr.d:0,from:o,toStop:s}); break; }
+    const pr=par[r][s]; if(!pr) return null;
+    if(pr.w==='start'){ legs.push({t:'walk',d:pr.d,from:o,toStop:s}); return legs.reverse(); }
     if(pr.w==='walk'){ legs.push({t:'walk',d:pr.d,fromStop:pr.from,toStop:s}); s=pr.from; continue; }
-    legs.push({t:'bus',p:pr.p,trip:pr.t,bi:pr.bi,ai:pr.ai}); s=pr.p.s[pr.bi]; r--;
+    legs.push({t:'bus',p:pr.p,trip:pr.t,bi:pr.bi,ai:pr.ai});
+    const b=pr.p.s[pr.bi], tb=at(pr.p,pr.t,pr.bi); let nr=-1;
+    for(let q=0;q<r;q++) if(par[q][b]&&arr[q][b]+(q>0?XFER_BUF:0)<=tb+1){ nr=q; break; }
+    if(nr<0) return null; r=nr; s=b;
   }
-  return legs.reverse();
+  return null;
 }
 /* timings, changes and walking of a journey; you leave just in time to catch the first bus */
 /* The search finds the earliest arrival, but when there's time to spare (a long wait, at night) any stop
@@ -2965,28 +2995,24 @@ async function runPlan(){
   /* searched with short walks too, so a trip from the stop at your door shows even if a long walk to
      another line would get there a few minutes sooner */
   for(const walks of [[450,MAX_WALK],[MAX_WALK_FAR]]){
-    for(const maxWalk of walks){ let dep=dep0, runs=0, lastArr=null;
-      /* run again from just after each first bus, for later options; a run that only finds the same
-         arrival (a later first bus, less waiting on the way) doesn't count towards the four */
-      for(let it=0;it<25&&runs<4;it++){
-        const oM=new Map(walkStops(o.lat,o.lon,maxWalk)), dM=new Map(walkStops(dst.lat,dst.lon,maxWalk));
-        const js=raptor(o,dst,dep,c,del,maxWalk).map(l=>finish(tidy(l,o,dst,del,c,maxWalk,oM,dM),del,c)).filter(Boolean);
-        if(!js.length) break;
-        js.forEach(j=>{ j.cost=cost(j); const f=found.get(j.sig); if(!f||j.cost<f.cost) found.set(j.sig,j); });
-        const arr=Math.min(...js.map(j=>j.arrive)); if(lastArr==null||arr>lastArr+60) runs++; lastArr=arr;
-        dep=Math.min(...js.map(j=>j.legs.find(l=>l.t==='bus').dep))+60;
-      } }
+    for(const maxWalk of walks){
+      const oM=new Map(walkStops(o.lat,o.lon,maxWalk)), dM=new Map(walkStops(dst.lat,dst.lon,maxWalk));
+      const js=raptor(o,dst,dep0,c,del,maxWalk).map(l=>finish(tidy(l,o,dst,del,c,maxWalk,oM,dM),del,c)).filter(Boolean);
+      js.forEach(j=>{ j.cost=cost(j); const f=found.get(j.sig); if(!f||j.cost<f.cost) found.set(j.sig,j); }); }
     if(found.size) break;
   }
   const direct=walkBetween([o.lat,o.lon],[dst.lat,dst.lon]);
   let opts=[...found.values()].filter(j=>j.leave>=dep0-60);
   /* drop options that are worse in every way than another one */
   opts=opts.filter(a=>!opts.some(b=>b!==a&&b.arrive<=a.arrive&&b.changes<=a.changes&&b.walkM<=a.walkM+50&&b.leave>=a.leave&&(b.arrive<a.arrive||b.changes<a.changes||b.leave>a.leave)));
-  /* …or that get there no sooner than another one that is nicer overall (less walking, fewer changes) */
-  opts=opts.filter(a=>!opts.some(b=>b!==a&&b.arrive<=a.arrive&&b.cost<a.cost));
+  /* …or that leave about when another one does (within 5 min) and get there no sooner, with more
+     walking or changes; leaving later is an option worth showing, leaving at the same time isn't */
+  opts=opts.filter(a=>!opts.some(b=>b!==a&&b.arrive<=a.arrive&&b.leave>=a.leave-300&&b.cost<a.cost));
   /* …or that are far worse than the best (a long walk to ride one stop and change twice) */
   const bestCost=Math.min(...opts.map(j=>j.cost));
   opts=opts.filter(a=>a.cost<=bestCost*1.5+300);
+  /* two hours of options from the first sensible one */
+  const firstLeave=Math.min(...opts.map(j=>j.leave)); opts=opts.filter(j=>j.leave<=firstLeave+WINDOW);
   opts.sort((a,b)=>a.arrive-b.arrive||a.changes-b.changes).splice(6);
   if(direct<=3000){ const w=walkSec(direct); opts.push({walk:true,leave:dep0,arrive:dep0+w,changes:0,walkM:direct,legs:[{t:'walk',d:direct,from:o,to:dst,start:dep0,end:dep0+w}]});
     opts.sort((a,b)=>a.arrive-b.arrive); }
