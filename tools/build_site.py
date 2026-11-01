@@ -65,7 +65,13 @@ def snap_routes(data):
         path = os.path.join(tmp, 'data.json')
         with open(path, 'w', encoding='utf-8') as f:
             f.write(json.dumps(d, separators=(',', ':'), ensure_ascii=False))
+        orig = os.path.join(tmp, 'outline.json')
+        with open(orig, 'w', encoding='utf-8') as f:
+            f.write(json.dumps(d, separators=(',', ':'), ensure_ascii=False))
         subprocess.run([sys.executable, '-I', os.path.join(HERE, 'match_shapes.py'), path, pm], check=True)
+        # list the places where a route still looks odd on the map (doesn't stop the build)
+        print('Places to look at (tools/check_routes.py):')
+        subprocess.run([sys.executable, '-I', os.path.join(HERE, 'check_routes.py'), path, '--orig', orig])
         return open(path, encoding='utf-8').read().replace('</', '<\\/')
 
 
