@@ -44,4 +44,4 @@ After changing only `tools/template.html` or `tools/i18n.js`, run `python3 tools
 
 ## Data
 
-Timetables: Ayuntamiento de Burgos open data (GTFS). Map: © OpenStreetMap contributors, vector tiles from [Protomaps](https://protomaps.com), drawn with [protomaps-leaflet](https://github.com/protomaps/protomaps-leaflet) (BSD-3-Clause, `map/protomaps-leaflet-LICENSE`).
+Timetables: Ayuntamiento de Burgos open data (GTFS). Map: © OpenStreetMap contributors, vector tiles from [Protomaps](https://protomaps.com), drawn with [Leaflet](https://leafletjs.com) and [protomaps-leaflet](https://github.com/protomaps/protomaps-leaflet). Both are hosted with the site in `lib/` (BSD licences in `lib/leaflet-LICENSE` and `lib/protomaps-leaflet-LICENSE`), so the site loads nothing from other servers except live bus data.
