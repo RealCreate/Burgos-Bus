@@ -178,6 +178,13 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .dep{display:flex;align-items:center;gap:12px;padding:11px 14px;border-top:1px solid var(--rule);width:100%;text-align:left}
 .dep:first-child{border-top:0}
 .dep .main{flex:1;min-width:0}
+.dep.skel{pointer-events:none}
+.skel i{display:block;border-radius:6px;background:var(--sunk);height:14px}
+.skel .badge{background:var(--sunk)!important;color:transparent!important;min-width:44px}
+.skel .main i+i{margin-top:7px;width:55%;height:11px}
+.skel .when i{width:52px;height:18px}
+@media (prefers-reduced-motion:no-preference){.skel i,.skel .badge{animation:skel 1.1s ease-in-out infinite alternate}}
+@keyframes skel{from{opacity:.55}to{opacity:1}}
 .dep .hs{font-weight:700;line-height:1.2}
 .dep .via{font-size:.78rem;color:var(--muted)}
 .dep .when{text-align:right;font:700 1.15rem/1 var(--font-display);font-variant-numeric:tabular-nums}
@@ -1002,7 +1009,9 @@ body{font:16px/1.4 var(--font-body);-webkit-font-smoothing:antialiased;letter-sp
 .dep .when{font-family:var(--font-display);font-weight:600;letter-spacing:-.02em}
 .full .hr b,.full .hr span{font-family:var(--font-display)}
 /* detail header: part of the material, sticks while the list scrolls under it */
-.dhead{background:var(--glass);-webkit-backdrop-filter:blur(22px) saturate(180%);backdrop-filter:blur(22px) saturate(180%);border-bottom:.5px solid var(--rule)}
+/* Opaque, and stuck 1px above the top: iPhone Safari can leave a sliver between a sticky header and the
+   top of a scrolling panel, which let the list behind show through. */
+.dhead{background:var(--glass-solid);border-bottom:.5px solid var(--rule);top:-1px;padding-top:11px}
 .dhead h2{font:650 1.2rem/1.15 var(--font-display);letter-spacing:-.022em}
 .back{color:var(--accent)}
 .star{color:var(--rule);font-size:1.3rem}
@@ -1165,8 +1174,8 @@ body{font:16px/1.4 var(--font-body);-webkit-font-smoothing:antialiased;letter-sp
 (function(){
 "use strict";
 const STANDALONE = true;
-const BUILD = '01 Nov 18:14';
-const BUILD_ID = '1793553296';
+const BUILD = '01 Nov 18:25';
+const BUILD_ID = '1793553953';
 /* The street map is the site's own: an OpenStreetMap extract of Burgos only (map/burgos.pmtiles, built by
    .github/workflows/build-map.yml), drawn on the phone by protomaps-leaflet. MAP_BOUNDS is the box that file
    covers; the map can't be dragged or zoomed out beyond it. Keep it in step with BBOX in that workflow.
@@ -1765,6 +1774,13 @@ function stopView(v){
   h+=`<div class="xfer" style="gap:6px;margin:0 0 6px">${stopRoutes[v.s].map(r=>`<button data-line="${r}" data-hl="${v.s}">${badge(r)}</button>`).join('')}</div>`;
   h+=`<a class="linkbtn" href="https://maps.apple.com/?ll=${s.lat},${s.lon}&q=${encodeURIComponent(s.name)}" target="_blank" rel="noopener">${T('apple')}</a><a class="linkbtn" href="https://www.google.com/maps/search/?api=1&query=${s.lat},${s.lon}" target="_blank" rel="noopener">${T('google')}</a>`;
   const la=liveArrivals(v.s);
+  /* Opening a stop whose live times haven't arrived yet: placeholder rows for up to STOP_WAIT ms instead
+     of the timetable, so the board doesn't show scheduled times first and then jump to live ones. */
+  if(!la&&waitLive(v.s)){
+    h+=`<div class="eyebrow"><span class="livedot"></span>${T('live')}</div><div class="list" aria-busy="true" aria-label="${T('live')}">`;
+    for(let k=0;k<3;k++) h+=`<div class="dep skel" aria-hidden="true"><span class="badge">00</span><div class="main"><i></i><i></i></div><div class="when"><i></i></div></div>`;
+    return h+'</div></div>';
+  }
   if(la){
     h+=`<div class="eyebrow"><span class="livedot"></span>${T('live')}</div><div class="list">`;
     la.forEach(d=>{ const pp=patFor(d.r,d.h);
@@ -1821,7 +1837,9 @@ function initMap(){
   }
   if(STANDALONE){
     const isDark=()=>document.documentElement.dataset.theme==='dark'||(document.documentElement.dataset.theme!=='light'&&matchMedia('(prefers-color-scheme: dark)').matches);
-    const attribution='© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors · <a href="https://protomaps.com" target="_blank" rel="noopener">Protomaps</a>';
+    /* OpenStreetMap's licence requires this credit wherever the map is shown */
+    const attribution='© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>';
+    if(map.attributionControl) map.attributionControl.setPrefix(false);
     const mkTiles=()=>{
       if(typeof protomapsL==='undefined') return null;
       const fl=MAP_STYLE[isDark()?'dark':'light'];
@@ -2454,7 +2472,7 @@ function applyLine(r,list,at){
   liveLines.set(r,{at,buses}); return true;
 }
 async function pollStop(i){
-  const res=await liveGet('ObtenerTiemposRutaPorParada/'+stopNum(i)); if(res==null) return false;
+  const res=await liveGet('ObtenerTiemposRutaPorParada/'+stopNum(i)); if(res==null){ endWait(i); return false; }
   const rows=[];
   for(const g of res.j){ if(!g||g.header===true) continue; const r=lineOfCode(String(g.line||'').trim()); if(r<0) continue;
     for(const e of g.publicEstimationVHExts||[]){ const sec=+e.seconds; if(!isFinite(sec)) continue;
@@ -2462,7 +2480,7 @@ async function pollStop(i){
   /* the city sometimes lists the same bus twice for a stop (under two of its route variants):
      each bus is shown once, with its soonest time */
   const seen=new Set(), uniqRows=rows.sort((a,b)=>a.sec-b.sec).filter(x=>{ const k=x.r+'|'+(x.bus??Math.random()); if(seen.has(k)) return false; seen.add(k); return true; });
-  liveStops.set(i,{at:res.at,rows:uniqRows}); return true;
+  liveStops.set(i,{at:res.at,rows:uniqRows}); if(stopWait.get(i)) stopWait.set(i,0); return true;
 }
 let liveTimer=0; const lastPoll=new Map();
 async function livePoll(onlyNew){
@@ -2599,7 +2617,23 @@ function shareCurrent(){
 let toastTimer=0;
 function toast(msg){ const el=$('#toast'); el.textContent=msg; el.hidden=false; void el.offsetWidth; el.classList.add('show');
   clearTimeout(toastTimer); toastTimer=setTimeout(()=>{ el.classList.remove('show'); setTimeout(()=>{el.hidden=true},250); },1800); }
-function openStop(s){st.panel=true;st.stack.push({kind:'stop',s});render();view.scrollTop=0;focusStop(s)}
+/* Live times for a stop just opened: wait for them (at most STOP_WAIT ms) before showing the board.
+   Only when live data is working and the stop has none fresh; the wait ends when the answer comes in,
+   fails, or time runs out, and the board is drawn again. */
+const STOP_WAIT=2000, stopWait=new Map();
+function waitLive(i){
+  if(!ctx().live||S[i].temp||fresh(liveStops.get(i))||navigator.onLine===false) return false;
+  const t=stopWait.get(i);
+  if(t===undefined){ stopWait.set(i,Date.now()+STOP_WAIT); setTimeout(()=>endWait(i),STOP_WAIT); setTimeout(()=>livePoll(true),0); return true; }
+  return t>Date.now();
+}
+function endWait(i){
+  if(!stopWait.has(i)) return;
+  stopWait.set(i,0);
+  const top=st.stack[st.stack.length-1];
+  if(st.panel&&top&&top.kind==='stop'&&top.s===i) render(true);
+}
+function openStop(s){st.panel=true;stopWait.delete(s);st.stack.push({kind:'stop',s});render();view.scrollTop=0;focusStop(s)}
 
 document.addEventListener('click',e=>{
   const t=e.target.closest('button,a'); if(!t) return;
