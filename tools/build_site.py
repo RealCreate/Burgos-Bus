@@ -100,6 +100,12 @@ def main(src):
             page = page.replace('__PLACES_VERSION__', hashlib.sha256(f.read()).hexdigest()[:10])
     except OSError:
         page = page.replace('__PLACES_VERSION__', '0')
+    walk = os.path.join(ROOT, 'map', 'walk.json')
+    try:
+        with open(walk, 'rb') as f:
+            page = page.replace('__WALK_VERSION__', hashlib.sha256(f.read()).hexdigest()[:10])
+    except OSError:
+        page = page.replace('__WALK_VERSION__', '0')
     i18n = open(os.path.join(HERE, 'i18n.js'), encoding='utf-8').read()
     i18n = json.loads(re.sub(r'^\s*/\*.*?\*/', '', i18n, flags=re.S))
     keys = set(i18n['en'])
