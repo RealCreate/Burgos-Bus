@@ -75,6 +75,12 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .eyebrow{font:700 .72rem var(--font-body);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:18px 2px 8px}
 .note{font-size:.8rem;color:var(--muted);margin:22px 2px 0;line-height:1.5}
 .note.unof{color:var(--ink);font-weight:500}
+.hint.away{display:none}
+.maplegend{display:flex;gap:12px;align-items:center;padding:5px 10px;border-radius:999px;background:var(--glass-solid);box-shadow:var(--float);font:600 .72rem/1.2 var(--font-body);color:var(--ink);margin:0 0 8px 8px!important}
+.maplegend[hidden]{display:none}
+.maplegend .lg{display:inline-block;width:12px;height:12px;border-radius:4px;margin-right:6px;vertical-align:-2px;background:var(--muted)}
+.maplegend .lg.live{background:var(--surface);box-shadow:0 0 0 2.5px var(--live)}
+.linkish{background:none;border:0;padding:0;font:inherit;color:var(--accent);font-weight:600;text-decoration:underline;text-underline-offset:2px}
 .banner.dv b{display:block;margin-bottom:4px}.banner.dv>div{margin-top:3px}.banner.dv .badge{vertical-align:middle}
 .dvnote{color:var(--muted);font-size:.78rem;margin-top:6px!important}
 .tmpl{background:none;border:0;padding:0;margin:0;font:inherit;color:var(--accent);text-decoration:underline;cursor:pointer;text-align:left}
@@ -87,7 +93,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .badge{display:inline-flex;align-items:center;justify-content:center;min-width:2.3em;height:1.75em;padding:0 .35em;border-radius:6px;font:700 1rem/1 var(--font-display);font-variant-numeric:tabular-nums;letter-spacing:.01em;flex:none;box-shadow:inset 0 0 0 1px rgba(0,0,0,.08)}
 .badge.sm{font-size:.78rem;min-width:2.1em;height:1.6em;border-radius:5px}
 .badge.lg{font-size:1.5rem;height:1.6em;border-radius:8px}
-.badge.off{background:var(--sunk)!important;color:var(--muted)!important;box-shadow:inset 0 0 0 1.5px var(--rule)}
+.badge.off{background:transparent!important;color:var(--ink)!important;box-shadow:inset 0 0 0 2.5px var(--lc,var(--rule))}
 .tog{flex:none;border-radius:8px;padding:4px;margin:-4px}
 .tog .badge{transition:background-color .2s,color .2s,transform .15s}
 .tog:active .badge{transform:scale(.92)}
@@ -287,6 +293,8 @@ body{font:16px/1.4 var(--font-body);-webkit-font-smoothing:antialiased;letter-sp
 .brand{font:600 1.18rem/1.1 var(--font-display);letter-spacing:-.02em;gap:10px}
 .brand small{font:400 .74rem/1.2 var(--font-body);letter-spacing:0;margin-top:2px}
 .day,.langbtn{background-color:var(--sunk);border:0;font:600 .86rem var(--font-body);letter-spacing:-.01em;min-height:34px}
+/* the closed picker only ever shows the chosen day; its width mustn't follow the longest option (e.g. a holiday) */
+.day{max-width:116px;text-overflow:ellipsis}
 .langbtn{padding:5px 11px}
 /* floating controls sit under the header */
 .fab{top:calc(var(--hdr) + 12px)}
@@ -346,7 +354,7 @@ body{font:16px/1.4 var(--font-body);-webkit-font-smoothing:antialiased;letter-sp
 .bulk .chip{color:var(--accent)}
 .linkbtn{border:0;background:var(--sunk);color:var(--accent);font-weight:590}
 .badge{font-family:var(--font-display);font-weight:700;border-radius:7px;letter-spacing:-.01em}
-.badge.off{background:var(--sunk)!important;box-shadow:none;color:var(--muted)!important}
+.badge.off{background:transparent!important;box-shadow:inset 0 0 0 2.5px var(--lc,var(--rule));color:var(--ink)!important}
 .tm{font-family:var(--font-display);border-radius:8px}
 .tm.next{background:var(--accent-fill);color:#fff}
 .dep .when{font-family:var(--font-display);font-weight:600;letter-spacing:-.02em}
@@ -463,7 +471,7 @@ body{font:16px/1.4 var(--font-body);-webkit-font-smoothing:antialiased;letter-sp
 @media (max-width:380px){
   .fab button{padding:10px 12px;gap:6px}.fab button svg{display:none}
   .top{padding:8px 10px}.brand{font-size:1.05rem}
-  .day{padding:6px 22px 6px 10px;max-width:118px;background-position:calc(100% - 13px) 55%,calc(100% - 8px) 55%}
+  .day{padding:6px 22px 6px 10px;max-width:104px;background-position:calc(100% - 13px) 55%,calc(100% - 8px) 55%}
   .langbtn .flag{display:none}}
 @media (max-width:360px){.day{max-width:92px}}
 @media (prefers-reduced-motion:reduce){
@@ -526,6 +534,22 @@ const MAP_URL = 'map/burgos.pmtiles?v=__MAP_VERSION__';
 const MAP_BOUNDS = [[42.25,-3.86],[42.46,-3.52]];
 /* Colours of the two map styles: Protomaps' light and dark, warmed up to look like the old CARTO map
    (coloured parks, water and main roads) and with darker or lighter street names so they're easy to read. */
+/* Map labels: Protomaps' own, minus OpenStreetMap's field, farm and lone-house names (hundreds around Burgos,
+   which buried the real places), with hamlets only from zoom 13; plus neighbourhood names and a few
+   landmarks (hospitals, university, stations, cathedral, museums, town hall, Plaza Mayor) when zoomed in. */
+const LANDMARKS=new Set(['hospital','university','college','bus_station','train_station','station','stadium','museum','townhall']);
+function mapLabels(fl){
+  const rs=protomapsL.labelRules(fl,'es'), skip=new Set(['locality','farm','isolated_dwelling']);
+  rs.forEach(r=>{ if(r.dataLayer!=='places') return; const f=r.filter;
+    r.filter=(z,ft)=>(!f||f(z,ft))&&!skip.has(ft.props.kind_detail)&&!(ft.props.kind_detail==='hamlet'&&z<13); });
+  const txt=o=>new protomapsL.CenteredTextSymbolizer(Object.assign({labelProps:['name:es','name'],stroke:fl.roads_label_minor_halo,width:2.5,maxLineChars:16},o));
+  rs.push({dataLayer:'places',minzoom:14,filter:(z,f)=>f.props.kind==='macrohood'||(f.props.kind==='neighbourhood'&&(f.props.kind_detail!=='neighbourhood'||z>=15)),
+    symbolizer:txt({fill:fl.subplace_label,font:'600 10.5px sans-serif',textTransform:'uppercase',letterSpacing:.8})});
+  rs.push({dataLayer:'pois',minzoom:14,filter:(z,f)=>{const k=f.props.kind,n=String(f.props.name||''),mz=+f.props.min_zoom||99;
+      return mz<=z+1&&(LANDMARKS.has(k)||(k==='place_of_worship'&&/^Catedral/.test(n))||(k==='pedestrian'&&/^Plaza Mayor/.test(n)));},
+    symbolizer:txt({fill:fl.roads_label_major,font:'italic 600 11px sans-serif',maxLineChars:24})});
+  return rs;
+}
 const MAP_STYLE = {"light":{"background":"#ece7df","earth":"#ece7df","park_a":"#d4ebcd","park_b":"#bfe2b3","hospital":"#f3e2e2","industrial":"#e8e4ec","school":"#efe8e0","wood_a":"#cfe6c4","wood_b":"#b6dca6","pedestrian":"#f3efe8","scrub_a":"#dcebd0","scrub_b":"#cbe3bb","glacier":"#e7e7e7","sand":"#e2e0d7","beach":"#e8e4d0","aerodrome":"#e6e4e8","runway":"#e9e9ed","water":"#a9d3e8","zoo":"#d4ebcd","military":"#dcdcdc","tunnel_other_casing":"#e0e0e0","tunnel_minor_casing":"#e0e0e0","tunnel_link_casing":"#e0e0e0","tunnel_major_casing":"#e0e0e0","tunnel_highway_casing":"#e0e0e0","tunnel_other":"#d5d5d5","tunnel_minor":"#d5d5d5","tunnel_link":"#d5d5d5","tunnel_major":"#d5d5d5","tunnel_highway":"#d5d5d5","pier":"#e0e0e0","buildings":"#dcd4c9","minor_service_casing":"#d6cdc0","minor_casing":"#d6cdc0","link_casing":"#d6cdc0","major_casing_late":"#d9c79a","highway_casing_late":"#e6c47a","other":"#f8f6f2","minor_service":"#fbfaf7","minor_a":"#ffffff","minor_b":"#ffffff","link":"#ffffff","major_casing_early":"#d9c79a","major":"#ffffff","highway_casing_early":"#e6c47a","highway":"#fde2a0","railway":"#b7b0aa","boundaries":"#adadad","bridges_other_casing":"#e0e0e0","bridges_minor_casing":"#e0e0e0","bridges_link_casing":"#e0e0e0","bridges_major_casing":"#e0e0e0","bridges_highway_casing":"#e0e0e0","bridges_other":"#ebebeb","bridges_minor":"#ffffff","bridges_link":"#ffffff","bridges_major":"#ffffff","bridges_highway":"#fde2a0","roads_label_minor":"#5f5a56","roads_label_minor_halo":"#ffffff","roads_label_major":"#4f4a46","roads_label_major_halo":"#ffffff","ocean_label":"#728dd4","subplace_label":"#6b6b6b","subplace_label_halo":"#e0e0e0","city_label":"#3d3d3d","city_label_halo":"#e0e0e0","state_label":"#b3b3b3","state_label_halo":"#e0e0e0","country_label":"#a3a3a3","address_label":"#7a7470","address_label_halo":"#ffffff","pois":{"blue":"#1A8CBD","green":"#20834D","lapis":"#315BCF","pink":"#EF56BA","red":"#F2567A","slategray":"#6A5B8F","tangerine":"#CB6704","turquoise":"#00C3D4"},"landcover":{"grassland":"rgba(222, 238, 210, 1)","barren":"rgba(255, 243, 215, 1)","urban_area":"rgba(236, 231, 223, 1)","farmland":"rgba(236, 240, 222, 1)","glacier":"rgba(255, 255, 255, 1)","scrub":"rgba(234, 239, 210, 1)","forest":"rgba(200, 228, 196, 1)"}},"dark":{"background":"#34373d","earth":"#1f1f1f","park_a":"#1d2b22","park_b":"#21382a","hospital":"#252424","industrial":"#222222","school":"#262323","wood_a":"#1d2b22","wood_b":"#21382a","pedestrian":"#1e1e1e","scrub_a":"#222323","scrub_b":"#222323","glacier":"#1c1c1c","sand":"#212123","beach":"#28282a","aerodrome":"#1e1e1e","runway":"#333333","water":"#1e3a4f","zoo":"#222323","military":"#242323","tunnel_other_casing":"#141414","tunnel_minor_casing":"#141414","tunnel_link_casing":"#141414","tunnel_major_casing":"#141414","tunnel_highway_casing":"#141414","tunnel_other":"#292929","tunnel_minor":"#292929","tunnel_link":"#292929","tunnel_major":"#292929","tunnel_highway":"#292929","pier":"#333333","buildings":"#2a2a2a","minor_service_casing":"#1f1f1f","minor_casing":"#1f1f1f","link_casing":"#1f1f1f","major_casing_late":"#1f1f1f","highway_casing_late":"#1f1f1f","other":"#333333","minor_service":"#333333","minor_a":"#3d3d3d","minor_b":"#333333","link":"#3d3d3d","major_casing_early":"#1f1f1f","major":"#3d3d3d","highway_casing_early":"#1f1f1f","highway":"#474747","railway":"#000000","boundaries":"#5b6374","bridges_other_casing":"#2b2b2b","bridges_minor_casing":"#1f1f1f","bridges_link_casing":"#1f1f1f","bridges_major_casing":"#1f1f1f","bridges_highway_casing":"#1f1f1f","bridges_other":"#333333","bridges_minor":"#333333","bridges_link":"#3d3d3d","bridges_major":"#3d3d3d","bridges_highway":"#474747","roads_label_minor":"#9a9a9a","roads_label_minor_halo":"#1f1f1f","roads_label_major":"#a8a8a8","roads_label_major_halo":"#1f1f1f","ocean_label":"#717784","subplace_label":"#9a9a9a","subplace_label_halo":"#1f1f1f","city_label":"#c8c8c8","city_label_halo":"#212121","state_label":"#3d3d3d","state_label_halo":"#1f1f1f","country_label":"#5c5c5c","address_label":"#8a8a8a","address_label_halo":"#1f1f1f","pois":{"blue":"#4299BB","green":"#30C573","lapis":"#2B5CEA","pink":"#EF56BA","red":"#F2567A","slategray":"#93939F","tangerine":"#F19B6E","turquoise":"#00C3D4"},"landcover":{"grassland":"rgba(30, 41, 31, 1)","barren":"rgba(38, 38, 36, 1)","urban_area":"rgba(28, 28, 28, 1)","farmland":"rgba(31, 36, 32, 1)","glacier":"rgba(43, 43, 43, 1)","scrub":"rgba(34, 36, 30, 1)","forest":"rgba(28, 41, 37, 1)"}}};
 const D = JSON.parse(document.getElementById('gtfs').textContent);
 const I18N = __I18N__;
@@ -622,10 +646,15 @@ const TEMP_STOPS={
   }
 }
 const resolved = {};
+/* Public holidays in Burgos (national, Castilla y León and local). Only used for days the published
+   timetable doesn't cover: buses then run their Sunday timetable, so that's what is shown. Add next
+   year's dates once they're published (2027's local holidays weren't yet in Nov 2026). */
+const HOLIDAYS=new Set(['20261102','20261207','20261208','20261225',
+  '20270101','20270106','20270325','20270326','20270423','20270501','20270816','20271012','20271101','20271206','20271208','20271225']);
 function resolveKey(k){
   if(resolved[k]) return resolved[k];
   if(D.dates[k]) return resolved[k]={key:k,fb:false};
-  const w=wday(k); let best=null, bd=1e15;
+  const w=HOLIDAYS.has(k)?0:wday(k); let best=null, bd=1e15;
   for(const dk of dataKeys){ if(wday(dk)!==w) continue; const d=Math.abs(keyToUTC(dk)-keyToUTC(k)); if(d<bd){bd=d;best=dk} }
   return resolved[k]={key:best||dataKeys[dataKeys.length-1],fb:true};
 }
@@ -787,7 +816,7 @@ function uniDir(r,c){
   return a.term<=b.term?dirs[0]:dirs[1];
 }
 function mainPattern(pats,c){let best=null,bn=-1;for(const p of pats){const n=tripsOn(p,c.key).length*1000+p.s.length;if(n>bn){bn=n;best=p}}return best}
-function badge(r,cls=''){const x=R[r];return `<span class="badge ${cls}" style="background:${x.bcol};color:${x.txt}">${esc(x.n)}</span>`}
+function badge(r,cls=''){const x=R[r];return `<span class="badge ${cls}" style="background:${x.bcol};color:${x.txt};--lc:${x.col}">${esc(x.n)}</span>`}
 
 /* ---------- views ---------- */
 const view=$('#view');
@@ -795,7 +824,7 @@ function render(keepScroll){
   const y=view.scrollTop;
   const top=st.stack[st.stack.length-1];
   document.querySelectorAll('.pbar [data-tab]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tab===st.tab&&!top)));
-  panelTo(st.panel?(st.full?'large':'medium'):'closed'); $('#fab').hidden=st.panel;
+  panelTo(st.panel?(st.full?'large':'medium'):'closed'); $('#fab').hidden=st.panel; $('#hint').classList.toggle('away',st.panel);
   $('#grow').setAttribute('aria-label',T(st.full?'shrink':'expand'));
   $('#grow svg').style.transform=st.full?'rotate(180deg)':'';
   if(st.panel){
@@ -916,9 +945,9 @@ const rubber=(o,dim,c=.55)=>(o*dim*c)/(dim+c*Math.abs(o));  /* resistance past t
    The banner saying so is switched off (the owner's choice); the footer of the lines list still gives
    the dates the timetable covers. Return the banner below again to bring it back. */
 function fallbackBanner(c){
-  return '';
-  /* const r=resolveKey(c.key); if(!r.fb) return '';
-  return `<div class="banner">${T('banner',{from:longKey(dataKeys[0]),to:longKey(dataKeys[dataKeys.length-1]),day:prettyKey(c.key),wday:wdayLong(r.key),date:longKey(r.key)})}</div>`; */
+  const r=resolveKey(c.key); if(!r.fb) return '';
+  const a={from:longKey(dataKeys[0]),to:longKey(dataKeys[dataKeys.length-1]),day:prettyKey(c.key),wday:wdayLong(r.key),date:longKey(r.key)};
+  return `<div class="banner">${T(HOLIDAYS.has(c.key)?'bannerHoliday':'banner',a)}</div>`;
 }
 
 function tempStops(key){
@@ -953,6 +982,9 @@ function noticeFor(r,key){
   return null;
 }
 const stopClosed=(st_,r,key)=>{const x=noticeFor(r,key);return !!x&&x.closed.has(st_)};
+/* for bus pop-ups: whether stop k of route p is served today, and the first served stop from k on */
+const isOpenAt=(p,k)=>!stopClosed(p.s[k],p.r,ctx().key);
+const nextOpen=(p,k)=>{ while(k<p.s.length&&!isOpenAt(p,k)) k++; return k; };
 const altList=alts=>alts.map(a=>(TEMP_STOPS[a[0]]?`<button class="tmpl" data-tmp="${esc(a[0])}">📍 ${esc(a[0])}</button>`:esc(a[0]))+(a[1]?` <small>(${T('dvNew')})</small>`:'')).join(', ');
 function diversionBanner(r,c,pat){
   const x=noticeFor(r,c.key); if(!x) return '';
@@ -1029,7 +1061,9 @@ function lineView(v){
   if(c.live){
     if(lv&&lvOn.length) h+=`<div class="status"><span class="live"><span class="livedot"></span>${T('onRoad',{n:lvOn.length})}</span> · ${T('liveGps')}</div>`;
     else if(act.length) h+=`<div class="status"><span class="live"><span class="livedot"></span>${T('onRoad',{n:act.length})}</span> · ${T('estNote')}</div>`;
-    else { const nx=departuresAt(p.s[0],c,q=>q.r===r&&q.d===v.d,{from:c.from})[0]; h+=`<div class="status">${T('noneRunning')}${nx?' '+T('nextLeaves',{stop:esc(S[p.s[0]].name),time:hhmm(nx.tm)+(nx.tmrw?` (${T('tomorrow')})`:'')}):''}</div>`; }
+    else { const nx=departuresAt(p.s[0],c,q=>q.r===r&&q.d===v.d,{from:c.from})[0];
+      const other=dirs.find(d=>d!==v.d), nOther=other==null?0:lv?lv.buses.filter(b=>pats.some(q=>q.d===other&&liveOn(b,q))).length:activeTrips(pats.filter(q=>q.d===other),c).length;
+      h+=`<div class="status">${T('noneThisDir')}${nx?' '+T('nextLeaves',{stop:esc(S[p.s[0]].name),time:hhmm(nx.tm)+(nx.tmrw?` (${T('tomorrow')})`:'')}):''}${nOther?` <button class="linkish" data-dir="${other}">${T('otherDirN',{n:nOther})}</button>`:''}</div>`; }
   } else h+=`<div class="status">${T('tripsOnDay',{day:prettyKey(c.key),n:nTrips})}</div>`;
 
   /* place buses on this pattern */
@@ -1185,7 +1219,7 @@ function initMap(){
     const mkTiles=()=>{
       if(typeof protomapsL==='undefined') return null;
       const fl=MAP_STYLE[isDark()?'dark':'light'];
-      return protomapsL.leafletLayer({url:MAP_URL,paintRules:protomapsL.paintRules(fl),labelRules:protomapsL.labelRules(fl,'es'),
+      return protomapsL.leafletLayer({url:MAP_URL,paintRules:protomapsL.paintRules(fl),labelRules:mapLabels(fl),
         backgroundColor:fl.background,maxDataZoom:15,maxZoom:19,
         bounds:L.latLngBounds(MAP_BOUNDS),noWrap:true,attribution}).addTo(map);
     };
@@ -1211,6 +1245,9 @@ function initMap(){
   map.on('dragstart',()=>{ if(follow) setFollow(false); });
   map.on('zoomend',styleStops);
   busLayer=L.layerGroup().addTo(map); ringLayer=L.layerGroup().addTo(map);
+  /* what the two kinds of bus on the map mean, shown only while buses are on it */
+  const Leg=L.Control.extend({options:{position:'bottomleft'},onAdd(){const d=L.DomUtil.create('div','maplegend');d.hidden=true;d.setAttribute('aria-hidden','true');return d}});
+  legendCtl=new Leg(); map.addControl(legendCtl);
   map.on('zoomstart',()=>{zooming=true}); map.on('zoomend',()=>{zooming=false;if(busFollow)busFollow.cp=null;startGlide()});
   /* touching the map (a drag, a pinch, a scroll-wheel) stops following the open bus */
   map.on('dragstart',stopFollowBus);
@@ -1309,7 +1346,7 @@ function styleStops(){
   const z=map.getZoom(), lineOpen=selection().r>=0, dots=z<DOT_Z, dark=isDarkNow();
   for(const m of stopMarkers){
     const b=m._b;
-    const show=m.isPopupOpen()||b.on||(lineOpen?z>=15:z>=DOT_MIN_Z);
+    const show=m.isPopupOpen()||b.on||(b.temp?(b.lit||z>=15):(lineOpen?z>=15:z>=DOT_MIN_Z));
     if(show!==stopLayer.hasLayer(m)){ if(show) stopLayer.addLayer(m); else stopLayer.removeLayer(m); }
     if(!show) continue;
     if(b.temp){
@@ -1363,11 +1400,12 @@ function drawRoutes(sel){
     stopMarkers.push(m);
   }
   const warn=css.getPropertyValue('--warn').trim()||'#C93400';
+  const shownT=shownLines();
   for(const x of tempStops(ctx().key)){
     if(r0>=0&&!x.rs.includes(r0)) continue;
     const on=r0>=0, base=on?7:6;
     const m=L.circleMarker(x.ll,{radius:base,color:warn,weight:2.5,dashArray:'3 2',fillColor:surf,fillOpacity:1});
-    m._b={base,weight:2.5,on,faded:false,fill:surf,col:warn,temp:true};
+    m._b={base,weight:2.5,on,faded:false,fill:surf,col:warn,temp:true,lit:x.rs.some(r=>shownT.has(r))};
     m.on('click',()=>{m.bindPopup(stopPop(x.i)).openPopup()});
     stopMarkers.push(m);
   }
@@ -1456,6 +1494,14 @@ function headingAt(sh,d){
    roof hatch, rear window. Body takes the line colour; the middle of the roof stays clear for the number. */
 const BUS_TOP='<svg class="body" viewBox="0 0 26 56" aria-hidden="true"><rect x=".6" y="10.5" width="3.2" height="4.2" rx="1.4" fill="#1d1d1f"/><rect x="22.2" y="10.5" width="3.2" height="4.2" rx="1.4" fill="#1d1d1f"/><path d="M8.5 2h9a6.5 6.5 0 0 1 6.5 6.5V51a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V8.5A6.5 6.5 0 0 1 8.5 2z" style="fill:var(--c)" stroke="#fff" stroke-width="1.6"/><path d="M8.6 3.6h8.8a5 5 0 0 1 5 4.6l.1 1.4q-9.5-2.4-19 0l.1-1.4a5 5 0 0 1 5-4.6z" fill="#0e1520" fill-opacity=".72"/><path d="M6.5 5.6q6.5-1.6 13 0" stroke="#fff" stroke-opacity=".45" stroke-width=".7" fill="none" stroke-linecap="round"/><rect x="3.3" y="12" width="1.3" height="37" rx=".6" fill="#000" fill-opacity=".22"/><rect x="21.4" y="12" width="1.3" height="37" rx=".6" fill="#000" fill-opacity=".22"/><rect x="6.6" y="11.5" width="12.8" height="7.2" rx="1.6" fill="#fff" fill-opacity=".3"/><path d="M8.6 13.6h8.8M8.6 15.1h8.8M8.6 16.6h8.8" stroke="#000" stroke-opacity=".18" stroke-width=".6"/><rect x="9" y="39.5" width="8" height="4.4" rx="1" fill="#000" fill-opacity=".16"/><rect x="5.2" y="50.2" width="15.6" height="2.2" rx="1" fill="#0e1520" fill-opacity=".45"/></svg>';
 const busMarkers=new Map(); /* one marker per trip, moved in place every second */
+let legendCtl=null, legendKey='';
+function updLegend(){
+  if(!legendCtl) return; let live=false, est=false;
+  for(const m of busMarkers.values()){ if(!busLayer.hasLayer(m)) continue; if(m._live) live=true; else est=true; }
+  const k=(live?'l':'')+(est?'e':'')+lang; if(k===legendKey) return; legendKey=k;
+  const el=legendCtl.getContainer(); el.hidden=!live&&!est;
+  el.innerHTML=(live?`<span><i class="lg live"></i>${T('legendLive')}</span>`:'')+(est?`<span><i class="lg est"></i>${T('legendEst')}</span>`:'');
+}
 /* Detail card for a tapped bus: whether it is moving, stopped at a stop or waiting to start,
    where it is heading, how far along the route it is and its next stops. Refreshed every second. */
 function busPopup(id){
@@ -1464,14 +1510,16 @@ function busPopup(id){
   const at=k=>t0+a.t.prof[k];
   const cd=k=>{const r=rel(at(k)-N);return r?`${r} · ${hhmm(at(k))}`:hhmm(at(k))};
   let state, line1, from;
+  const nk=nextOpen(p,a.k+1);
   if(a.wait){ state='wait'; line1=T('nextLeaves',{stop:esc(S[p.s[0]].name),time:hhmm(t0)}); from=1; }
-  else if(N-at(a.k)<=20){ state='atstop'; line1=T('atStop',{stop:esc(S[p.s[a.k]].name)}); from=a.k+1; }
-  else { state='move'; line1=`${T('headingTo',{stop:esc(S[p.s[a.k+1]].name)})} · ${cd(a.k+1)}`; from=a.k+1; }
-  const nextIdx=a.wait?0:(state==='atstop'?a.k:a.k+1);
-  const ups=[]; for(let k=Math.max(from,state==='move'?a.k+2:from);k<p.s.length&&ups.length<3;k++) ups.push(k);
+  else if(N-at(a.k)<=20&&isOpenAt(p,a.k)){ state='atstop'; line1=T('atStop',{stop:esc(S[p.s[a.k]].name)}); from=a.k+1; }
+  else if(nk<p.s.length){ state='move'; line1=`${T('headingTo',{stop:esc(S[p.s[nk]].name)})} · ${cd(nk)}`; from=nk+1; }
+  else { state='atstop'; line1=T('atStop',{stop:esc(S[p.s[p.s.length-1]].name)}); from=p.s.length; }
+  const nextIdx=a.wait?0:(state==='atstop'?a.k:nk);
+  const ups=[]; for(let k=from;k<p.s.length&&ups.length<3;k++) if(isOpenAt(p,k)) ups.push(k);
   const last=p.s.length-1;
   return `<div class="pop busdet"><div class="dyn">
-<h4><span class="badge sm" style="background:${x.col};color:${x.txt}">${esc(x.n)}</span> → ${esc(p.h)}</h4>
+<h4><span class="badge sm" style="background:${x.bcol};color:${x.txt}">${esc(x.n)}</span> → ${esc(p.h)}</h4>
 <div class="bline">${line1}</div>
 <div class="bar"><span style="width:${(100*(nextIdx)/Math.max(1,last)).toFixed(1)}%"></span></div>
 ${ups.length?`<div class="code" style="margin-top:8px">${T('upcoming')}</div><ul>${ups.map(k=>`<li><span class="ph">${esc(S[p.s[k]].name)}</span><b>${hhmm(at(k))}</b></li>`).join('')}</ul>`:''}</div>
@@ -1739,16 +1787,16 @@ function livePopup(id){
   let mid='';
   if(p){
     let k=0; while(k<p.s.length-1&&p.dist[k+1]<=b.pl.d+15) k++;
-    const last=p.s.length-1, atStop=Math.abs(p.dist[k]-b.pl.d)<=30, nxt=Math.min(k+1,last);
-    const line1=atStop||k===last?T('atStop',{stop:esc(S[p.s[k]].name)}):T('headingTo',{stop:esc(S[p.s[nxt]].name)});
-    const ups=[]; for(let q=(atStop?k:nxt)+1;q<=last&&ups.length<3;q++) ups.push(q);
+    const last=p.s.length-1, atStop=Math.abs(p.dist[k]-b.pl.d)<=30&&isOpenAt(p,k), nxt=nextOpen(p,k+1);
+    const line1=atStop||nxt>last?T('atStop',{stop:esc(S[p.s[Math.min(k,last)]].name)}):T('headingTo',{stop:esc(S[p.s[nxt]].name)});
+    const ups=[]; for(let q=(atStop?k:nxt)+1;q<=last&&ups.length<3;q++) if(isOpenAt(p,q)) ups.push(q);
     mid=`<div class="bline">${line1}</div>
-<div class="bar"><span style="width:${(100*(atStop?k:nxt)/Math.max(1,last)).toFixed(1)}%"></span></div>
+<div class="bar"><span style="width:${(100*Math.min(last,atStop?k:nxt)/Math.max(1,last)).toFixed(1)}%"></span></div>
 ${ups.length?`<div class="code" style="margin-top:8px">${T('upcoming')}</div><ul>${ups.map(q=>`<li><span class="ph">${esc(S[p.s[q]].name)}</span></li>`).join('')}</ul>`:''}`;
   }
   /* the age and the signal animation are filled in by liveBadge, so the pop-up isn't rebuilt every second */
   return `<div class="pop busdet"><div class="dyn">
-<h4><span class="badge sm" style="background:${x.col};color:${x.txt}">${esc(x.n)}</span> → ${esc(p?p.h:x.name)}</h4>
+<h4><span class="badge sm" style="background:${x.bcol};color:${x.txt}">${esc(x.n)}</span> → ${esc(p?p.h:x.name)}</h4>
 <div class="lvrow">${WIFI}<b>${T('live')}</b></div>
 ${mid}</div>
 ${p?`<button data-line="${b.r}" data-dirp="${p.id}" data-keepdir>${T('openLine')}</button>`:`<button data-line="${b.r}">${T('openLine')}</button>`}</div>`;
@@ -1862,14 +1910,14 @@ function liveKick(){ clearTimeout(kickTimer); kickTimer=setTimeout(()=>livePoll(
 /* ---------- day picker & clock ---------- */
 function buildDays(){
   const now=madridNow(); const sel=$('#day');
-  sel.innerHTML=Array.from({length:8},(_,i)=>`<option value="${i}">${i===0?T('today'):i===1?T('tomorrow'):prettyKey(addDays(now.key,i))}</option>`).join('');
+  sel.innerHTML=Array.from({length:8},(_,i)=>{const k=addDays(now.key,i);return `<option value="${i}">${i===0?T('today'):i===1?T('tomorrow'):prettyKey(k)}${HOLIDAYS.has(k)?' · '+T('holiday'):''}</option>`}).join('');
   sel.value=String(st.day);
 }
 function tickClock(){const n=madridNow();$('#clock').textContent=T('sub',{time:hhmm(n.sec)})}
 
 /* ---------- first-visit hint ---------- */
 let hintTimer=0;
-function showHint(){ if(!firstVisit) return; const h=$('#hint'); h.hidden=false;
+function showHint(){ if(!firstVisit||st.panel) return; const h=$('#hint'); h.hidden=false;
   hintTimer=setTimeout(()=>{ void h.offsetWidth; h.classList.add('show'); },700); }
 function dismissHint(){ if(!firstVisit) return; firstVisit=false; clearTimeout(hintTimer);
   try{localStorage.setItem('burgosbus-hinted','1')}catch(e){}
@@ -1937,12 +1985,24 @@ function setLang(c){
 }
 
 /* ---------- events ---------- */
+let lastDir={}; try{const v=JSON.parse(localStorage.getItem('burgosbus-dir')||'{}');if(v&&typeof v==='object')lastDir=v}catch(e){}
+function saveDir(r,d){ lastDir[R[r].n]=d; try{localStorage.setItem('burgosbus-dir',JSON.stringify(lastDir))}catch(e){} }
+function nearDir(r){
+  if(!meLL) return null; const c=ctx(); let best=null;
+  for(const d of [0,1]){ const ps=routeP[r].filter(p=>p.d===d); if(!ps.length) continue;
+    let si=-1, bd=800; ps.forEach(p=>p.s.forEach(s=>{const dd=distM(S[s].lat,S[s].lon,meLL[0],meLL[1]); if(dd<bd){bd=dd;si=s}}));
+    if(si<0) continue; const nx=departuresAt(si,c,q=>q.r===r&&q.d===d,{from:c.from})[0];
+    if(nx&&(!best||nx.tm<best.tm)) best={d,tm:nx.tm}; }
+  return best?best.d:null;
+}
 function openLine(r,opts={}){
   const v={kind:'line',r,d:0,p:null,open:null,hl:opts.hl??null};
-  /* lines always open heading to the university first; only a specific bus keeps its own direction */
-  if(opts.pat!=null&&opts.keep){const p=P[opts.pat];v.d=p.d;v.p=p.id}
+  /* Which direction opens: the bus or departure you tapped; else the one you last looked at on this line;
+     else, once your location is known, the one whose next bus reaches the stop nearest you soonest;
+     else the one heading to the university campus. */
+  if(opts.pat!=null&&P[opts.pat]){const p=P[opts.pat];v.d=p.d;if(opts.keep)v.p=p.id}
   else if(opts.dir!=null&&routeP[r].some(p=>p.d===opts.dir)) v.d=opts.dir;
-  else v.d=uniDir(r,ctx());
+  else { const m=lastDir[R[r].n]; v.d=m!=null&&routeP[r].some(p=>p.d===m)?m:(nearDir(r)??uniDir(r,ctx())); }
   if(!active.has(r)){active.add(r);saveActive()}
   st.panel=true; st.stack.push(v); render(); view.scrollTop=0;
   /* scroll to the stop you came from, or else to the one nearest you */
@@ -2003,7 +2063,7 @@ document.addEventListener('click',e=>{
     if(x&&map){if(st.full){st.full=false;render(true)}map.once('moveend',()=>stopPop(x.i).setLatLng(x.ll).openOn(map));map.fitBounds(L.latLng(x.ll).toBounds(400),Object.assign({maxZoom:17},fitPad()))}return}
   const top=st.stack[st.stack.length-1];
   if(top&&top.kind==='line'){
-    if(t.dataset.dir!=null){top.d=+t.dataset.dir;top.p=null;top.open=null;render();view.scrollTop=0;const el=top.hl==null&&view.querySelector('.stop.near');if(el)el.scrollIntoView({block:'center'});return}
+    if(t.dataset.dir!=null){top.d=+t.dataset.dir;saveDir(top.r,top.d);top.p=null;top.open=null;render();view.scrollTop=0;const el=top.hl==null&&view.querySelector('.stop.near');if(el)el.scrollIntoView({block:'center'});return}
     if(t.dataset.pat!=null){top.p=+t.dataset.pat;top.open=null;render(true);return}
     if(t.dataset.open!=null){const i=+t.dataset.open;top.open=top.open===i?null:i;const p=P.find(q=>q.id===top.p);if(top.open!=null&&p){top.hl=p.s[i];render(true);if(!st.full)focusStop(p.s[i])}else render(true);return}
   }
@@ -2019,7 +2079,9 @@ view.addEventListener('compositionend',onSearch);
 $('#day').addEventListener('change',e=>{st.day=+e.target.value;render(true);drawBuses();refreshStopPopup()});
 
 applyStatic(); buildDays(); tickClock(); updHdr(); initMap(); applyStatic();
-if(!openFromHash(START_HASH)) render();
+if(!openFromHash(START_HASH)){ render();
+  /* a shared link to a stop or line that isn't in the timetable any more (or never was) */
+  if(/^#(stop|line)=/.test(START_HASH)) setTimeout(()=>toast(T('linkGone')),600); }
 showHint();
 if(window.ResizeObserver) new ResizeObserver(updHdr).observe($('.top'));
 $('#langback').addEventListener('click',()=>openLang(false));
@@ -2064,7 +2126,7 @@ function refreshStopPopup(){
   const h=stopPopup(pp._stop); if(h!==pp._h){ pp._h=h; pp.setContent(h); }
 }
 /* move the buses every second; skip while the tab is hidden */
-setInterval(()=>{ if(!document.hidden){ drawBuses(); liveBadges(); } },1000);
+setInterval(()=>{ if(!document.hidden){ drawBuses(); liveBadges(); updLegend(); } },1000);
 let lastKey=madridNow().key;
 setInterval(()=>{const k=madridNow().key;if(k!==lastKey){lastKey=k;buildDays();render(true)}},60000);
 /* test hook for the timetable audit; inert unless the page is opened with #audit */

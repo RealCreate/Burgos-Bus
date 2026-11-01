@@ -42,6 +42,10 @@ To rebuild by hand instead: `python3 tools/build_site.py Google_transit.zip`, th
 
 After changing only `tools/template.html` or `tools/i18n.js`, run `python3 tools/build_site.py --keep-data` to rebuild with the timetable already in `index.html`.
 
+## Public holidays
+
+When the published timetable has run out, the site shows the nearest matching day from the last weeks it covers. On public holidays it uses Sunday times instead, from the `HOLIDAYS` list in `tools/template.html`. Add each new year's Burgos holidays there (national, Castilla y León and the two local ones) once they're published, then run `python3 tools/build_site.py --keep-data`.
+
 ## Data
 
 Timetables: Ayuntamiento de Burgos open data (GTFS). Map: © OpenStreetMap contributors, vector tiles from [Protomaps](https://protomaps.com), drawn with [Leaflet](https://leafletjs.com) and [protomaps-leaflet](https://github.com/protomaps/protomaps-leaflet). Both are hosted with the site in `lib/` (BSD licences in `lib/leaflet-LICENSE` and `lib/protomaps-leaflet-LICENSE`), so the site loads nothing from other servers except live bus data.
