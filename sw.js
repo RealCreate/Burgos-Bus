@@ -4,8 +4,8 @@
    (map/burgos.pmtiles) that the page reads in small pieces; every piece you've needed is kept
    (up to PIECE_MAX, oldest dropped first), so places you've seen load instantly and still show
    offline, without ever downloading the whole file. */
-const CACHE = 'burgosbus-v3';
-const TILES = 'burgosbus-map';
+const CACHE = 'burgosbus-v4';
+const TILES = 'burgosbus-map2';   /* renamed to drop pieces saved with an ETag (see piece()) */
 const PIECE_MAX = 3000;   /* pieces are small (a few KB each), so this is roughly 15 MB at most */
 const PAGE = './';
 const STATIC = ['./lib/leaflet-1.9.4.js', './lib/protomaps-leaflet-5.1.0.js',
@@ -60,8 +60,12 @@ self.addEventListener('fetch', e => {
 
 /* Each piece is stored under the file's address plus its byte range. The Cache API refuses partial
    (206) responses, so a piece is stored as a plain response and turned back into a 206 when served.
-   The file's address carries its build date (?v=), so pieces of an old map are never mixed with a new
-   one; they're simply never asked for again and age out. If anything goes wrong, the network answers. */
+   The file's address carries a fingerprint of its contents (?v=), so pieces of an old map are never mixed
+   with a new one; they're simply never asked for again and age out. If anything goes wrong, the network answers.
+   The ETag header is removed from every piece, cached or fresh. GitHub Pages gives the file a new ETag on
+   every publish even when it hasn't changed, and the map library refuses to combine pieces with different
+   ETags: pieces saved before a publish then made every new area of the map stay blank. The ?v= fingerprint
+   already does the ETag's job. */
 let puts = 0;
 async function piece(req, url) {
   const range = req.headers.get('range');
@@ -69,19 +73,18 @@ async function piece(req, url) {
   const c = await caches.open(TILES);
   const hit = await c.match(key);
   if (hit) {
-    const h = new Headers(hit.headers);
+    const h = new Headers(hit.headers); h.delete('etag');
     return new Response(hit.body, { status: 206, statusText: 'Partial Content', headers: h });
   }
   const res = await fetch(req);
-  if (res.status === 206) {
-    const body = await res.clone().arrayBuffer();
-    const h = new Headers();
-    for (const k of ['content-type', 'content-range', 'etag', 'last-modified']) { const v = res.headers.get(k); if (v) h.set(k, v); }
-    h.set('content-length', String(body.byteLength));
-    c.put(key, new Response(body, { status: 200, headers: h }))
-      .then(() => { if (++puts % 100 === 0) trim(c); }).catch(() => {});
-  }
-  return res;
+  if (res.status !== 206) return res;
+  const body = await res.arrayBuffer();
+  const h = new Headers();
+  for (const k of ['content-type', 'content-range']) { const v = res.headers.get(k); if (v) h.set(k, v); }
+  h.set('content-length', String(body.byteLength));
+  c.put(key, new Response(body, { status: 200, headers: h }))
+    .then(() => { if (++puts % 100 === 0) trim(c); }).catch(() => {});
+  return new Response(body, { status: 206, statusText: 'Partial Content', headers: h });
 }
 async function trim(c) {
   const keys = await c.keys();
