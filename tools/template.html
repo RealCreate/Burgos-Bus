@@ -1300,7 +1300,10 @@ function initMap(){
       const fl=MAP_STYLE[isDark()?'dark':'light'];
       return protomapsL.leafletLayer({url:MAP_URL,paintRules:mapPaint(fl),labelRules:mapLabels(fl),
         backgroundColor:fl.background,maxDataZoom:15,maxZoom:19,
-        bounds:L.latLngBounds(MAP_BOUNDS),noWrap:true,attribution}).addTo(map);
+        bounds:L.latLngBounds(MAP_BOUNDS),noWrap:true,attribution,
+        /* draw new map pieces while you drag, not only once you let go (Leaflet waits on phones by default),
+           and keep a wider ring of drawn pieces around the screen so a drag rarely shows a gap */
+        updateWhenIdle:false,keepBuffer:4}).addTo(map);
     };
     let tiles=mkTiles();
     /* Light and dark are two styles of the same map. On a theme change the new style is drawn over the old
@@ -2215,7 +2218,10 @@ function onSearch(e){
 }
 view.addEventListener('input',onSearch);
 view.addEventListener('compositionend',onSearch);
-view.addEventListener('change',e=>{ if(e.target.id==='ptime'&&e.target.value){ const [hh,mm]=e.target.value.split(':').map(Number); plan.leave=hh*3600+mm*60; runPlan(); } });
+view.addEventListener('change',e=>{ if(e.target.id!=='ptime') return;
+  /* a time picks "leave at"; clearing it (iPhone's Reset button) goes back to "leave now" */
+  if(e.target.value){ const [hh,mm]=e.target.value.split(':').map(Number); plan.leave=hh*3600+mm*60; } else plan.leave=null;
+  runPlan(); });
 $('#day').addEventListener('change',e=>{st.day=+e.target.value;render(true);drawBuses();refreshStopPopup()});
 
 applyStatic(); buildDays(); tickClock(); updHdr(); initMap(); applyStatic();
