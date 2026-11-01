@@ -1217,8 +1217,8 @@ body{font:16px/1.4 var(--font-body);-webkit-font-smoothing:antialiased;letter-sp
 (function(){
 "use strict";
 const STANDALONE = true;
-const BUILD = '02 Nov 00:37';
-const BUILD_ID = '1793576235';
+const BUILD = '02 Nov 00:38';
+const BUILD_ID = '1793576291';
 /* The street map is the site's own: an OpenStreetMap extract of Burgos only (map/burgos.pmtiles, built by
    .github/workflows/build-map.yml), drawn on the phone by protomaps-leaflet. MAP_BOUNDS is the box that file
    covers; the map can't be dragged or zoomed out beyond it. Keep it in step with BBOX in that workflow.
@@ -1959,7 +1959,10 @@ function initMap(){
       const fl=MAP_STYLE[isDark()?'dark':'light'];
       return protomapsL.leafletLayer({url:MAP_URL,paintRules:mapPaint(fl),labelRules:mapLabels(fl),
         backgroundColor:fl.background,maxDataZoom:15,maxZoom:19,
-        bounds:L.latLngBounds(MAP_BOUNDS),noWrap:true,attribution}).addTo(map);
+        bounds:L.latLngBounds(MAP_BOUNDS),noWrap:true,attribution,
+        /* draw new map pieces while you drag, not only once you let go (Leaflet waits on phones by default),
+           and keep a wider ring of drawn pieces around the screen so a drag rarely shows a gap */
+        updateWhenIdle:false,keepBuffer:4}).addTo(map);
     };
     let tiles=mkTiles();
     /* Light and dark are two styles of the same map. On a theme change the new style is drawn over the old
