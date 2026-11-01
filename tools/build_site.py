@@ -5,7 +5,7 @@ Usage:  python3 tools/build_site.py Google_transit.zip
                                                       reuse the timetable already in index.html)
 Get the zip from https://www.aytoburgos.es/GTFS/Google_transit.zip
 """
-import datetime, json, os, re, subprocess, sys, tempfile, zipfile
+import hashlib, datetime, json, os, re, subprocess, sys, tempfile, zipfile
 from zoneinfo import ZoneInfo
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -14,6 +14,8 @@ ROOT = os.path.dirname(HERE)
 HEAD = ('<!doctype html>\n<html lang="es">\n<head>\n<meta charset="utf-8">\n'
         '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">\n'
         '<meta name="apple-mobile-web-app-capable" content="yes">\n'
+        '<meta name="description" content="Guía no oficial de los autobuses urbanos de Burgos: líneas, paradas, horarios y mapa. '
+        'Sin relación con el Ayuntamiento de Burgos.">\n'
         '<meta name="theme-color" content="#0D5DA6">\n'
         '<meta name="apple-mobile-web-app-title" content="Burgos Bus">\n'
         '<meta name="apple-mobile-web-app-status-bar-style" content="default">\n'
@@ -53,9 +55,10 @@ def main(src):
 
     page = open(os.path.join(HERE, 'template.html'), encoding='utf-8').read()
     page = page.replace('__LEAFLET_CSS__', css).replace('__STANDALONE__', 'true')
-    # The map file's build date, so a rebuilt map gets a new address and phones don't mix old and new pieces.
+    # A fingerprint of the map file, so a rebuilt map gets a new address and phones don't mix old and new pieces.
     try:
-        map_version = open(os.path.join(ROOT, 'map', 'BUILD_DATE'), encoding='utf-8').read().strip()
+        with open(os.path.join(ROOT, 'map', 'burgos.pmtiles'), 'rb') as f:
+            map_version = hashlib.sha256(f.read()).hexdigest()[:10]
     except OSError:
         map_version = '0'
     page = page.replace('__MAP_VERSION__', map_version)

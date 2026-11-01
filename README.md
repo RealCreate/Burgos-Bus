@@ -1,5 +1,7 @@
 # Burgos Bus
 
+**Unofficial.** Burgos Bus is an independent project. It is not run by or affiliated with the Ayuntamiento de Burgos, SMyT or Bonobur.
+
 A phone-friendly guide to the Burgos urban bus network (SMyT): every line in its official colour, each direction with all its stops, scheduled times at every stop, departure boards, and a street map of the routes.
 
 Live site: https://realcreate.github.io/Burgos-Bus/
@@ -42,4 +44,4 @@ After changing only `tools/template.html` or `tools/i18n.js`, run `python3 tools
 
 ## Data
 
-Timetables: Ayuntamiento de Burgos open data (GTFS). Map: © OpenStreetMap contributors, © CARTO.
+Timetables: Ayuntamiento de Burgos open data (GTFS). Map: © OpenStreetMap contributors, vector tiles from [Protomaps](https://protomaps.com), drawn with [protomaps-leaflet](https://github.com/protomaps/protomaps-leaflet) (BSD-3-Clause, `map/protomaps-leaflet-LICENSE`).

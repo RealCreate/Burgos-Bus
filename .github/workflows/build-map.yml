@@ -60,7 +60,7 @@ jobs:
           echo "Size: $size bytes"
           # A broken or empty cut must never replace a working map.
           if [ "$size" -lt 500000 ]; then echo "File looks too small"; exit 1; fi
-          echo "${{ steps.src.outputs.date }}" > map/BUILD_DATE
+          echo "${{ steps.src.outputs.date }}" > map/BUILD_DATE   # for reference; the page uses a fingerprint of the file
 
       - uses: actions/setup-python@v5
         with:
