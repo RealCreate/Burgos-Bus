@@ -14,6 +14,7 @@ Live site: https://realcreate.github.io/Burgos-Bus/
 - Favourite lines and stops are saved on your device.
 - **Links**: the address always matches what's open (`#stop=PA00305`, `#line=05&dir=1`), and the share button sends it, so you can share or bookmark a stop or line.
 - The last bus of the day on each line and direction is labelled, and once the location button has found you, lines open scrolled to your nearest stop.
+- **76 languages**: Spain's languages, every major European language, and the Asian and African languages with more than 10 million speakers. Arabic, Persian, Urdu and Pashto are laid out right to left. Text is in `tools/i18n.js` (English is the fallback for anything missing; a language with `"rtl": 1` reads right to left).
 - **Install it**: in Safari tap Share → Add to Home Screen. It opens full-screen with the bus icon, and lines, stops and timetables keep working offline, and so do the parts of the street map you've already looked at.
 - **Live buses**: buses on the map and on a line's stop list show their real GPS position, and stops show live arrival times (minutes, distance and bus number), from the city's bus tracking. Live buses have a green ring on the map. When live data isn't available, positions and countdowns are estimated from the timetable as before.
 
