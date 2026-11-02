@@ -103,13 +103,34 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .pchoices{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:4px}
 .pchoice{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;text-align:start;min-height:56px;background:var(--surface);border:1.5px solid var(--rule);color:var(--ink);transition:transform 140ms var(--ease-out)}
 .pchoice:active{transform:scale(.97)}
+.prow{display:flex;align-items:center}
+.prow .pmain{flex:1;min-width:0;text-align:start}
+.prow+.prow{border-top:1px solid var(--rule)}
+.list .prow .row{border:0}
+.pstar{flex:none;width:44px;height:44px;color:var(--muted)}
+.pstar[aria-pressed="true"]{color:#E8A400}
+.pmic{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:50%;background:var(--sunk);color:var(--accent)}
+.pmic svg{width:20px;height:20px}
+.padd .t1{color:var(--accent);font-weight:600}
+.pquick{display:flex;gap:8px;overflow-x:auto;margin-top:12px;padding-bottom:2px;scrollbar-width:none}
+.pquick{align-items:center}
+.pquick>.pdot{flex:none;margin-inline-end:2px}
+.pquick .chip{flex:none;display:inline-flex;align-items:center;gap:6px;max-width:220px}
+.pqt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pstart .pquick{margin-top:10px}
+.pqic svg{width:16px;height:16px;display:block}
+.peyeb{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.psave{display:inline-flex;align-items:center;gap:5px;font:inherit;font-size:.82rem;font-weight:600;color:var(--ink);padding:6px 8px;border-radius:8px;text-transform:none;letter-spacing:0}
+.psave svg{width:16px;height:16px;color:var(--accent)}
+.psave[aria-pressed="true"] svg{color:#E8A400}
+.dhead .psave{margin-inline-start:auto;flex:none}
 .pchoice b{display:block;font-weight:700;line-height:1.2}
 .pchoice small{display:block;font-size:.76rem;color:var(--muted);line-height:1.3;margin-top:2px}
 .pcht{min-width:0}
 .pchic{flex:none;width:36px;height:36px;border-radius:10px;display:grid;place-items:center}
 .pchic svg{width:22px;height:22px}
 .pchoice.loc{background:var(--accent-fill);border-color:var(--accent-fill);color:#fff}
-.pchoice.loc small{color:rgba(255,255,255,.85)}
+.pchoice.loc small{color:#fff}
 .pchoice.loc .pchic{background:rgba(255,255,255,.2);color:#fff}
 .pchoice.map .pchic{background:var(--sunk);color:var(--ink)}
 .pchoice.map{border-style:dashed}
@@ -2251,7 +2272,8 @@ document.addEventListener('click',e=>{
   if(t.dataset.tab){st.tab=t.dataset.tab;st.stack=[];if(st.tab==='plan')loadPlaces();render();view.scrollTop=0;if(st.tab==='plan')planFresh();return}
   if(t.hasAttribute('data-pnew')){planReset();render();syncMap();view.scrollTop=0;return}
   if(t.dataset.pfield){plan.edit=t.dataset.pfield;plan.q='';render();loadPlaces().then(()=>{if(plan.edit){const r=$('#res');if(r)r.innerHTML=planSugs()}});setTimeout(()=>{const q=$('#q-plan');if(q)q.focus()},60);return}
-  if(t.hasAttribute('data-pcancel')){plan.edit=null;render();return}
+  if(t.hasAttribute('data-pcancel')){plan.edit=null;plan.setting=null;render();return}
+  if(mineClick(t)) return;
   if(t.hasAttribute('data-pswap')){[plan.from,plan.to]=[plan.to,plan.from];plan.opts=null;if(plan.from&&plan.to)runPlan();else render();syncMap();return}
   if(t.dataset.pleave==='now'){plan.leave=null;runPlan();return}
   if(t.hasAttribute('data-pickcancel')){setPick(null);st.panel=true;st.tab='plan';st.stack=[];render();return}

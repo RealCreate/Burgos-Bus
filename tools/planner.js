@@ -12,7 +12,32 @@ const planOn=()=>st.panel&&st.tab==='plan';
 /* the plan stays while the app is open, so you can look at a line or stop and come back to it; on
    coming back after a minute or more, "leave now" trips are worked out again so the times aren't stale */
 function planFresh(){ if(plan.from&&plan.to&&plan.leave==null&&!plan.busy&&!plan.edit&&(!plan.at||Date.now()-plan.at>60000)) runPlan(); }
-function planReset(){ Object.assign(plan,{from:null,to:null,edit:null,q:'',leave:null,opts:null,busy:false,sel:0,err:null,at:0,atSec:null}); plan.seq++; st.stack=[]; }
+function planReset(){ Object.assign(plan,{from:null,to:null,edit:null,setting:null,q:'',leave:null,opts:null,busy:false,sel:0,err:null,at:0,atSec:null}); plan.seq++; st.stack=[]; }
+
+/* ---------- your places: home, work, favourites, recent searches and saved trips ----------
+   Kept on this phone only (localStorage), like favourite lines and stops: no account, nothing sent anywhere.
+   A stop is stored by its code, not its number in the timetable, so it survives timetable updates. */
+const MINE_KEY='burgosbus-places';
+let MINE={home:null,work:null,places:[],recent:[],trips:[]};
+try{ const v=JSON.parse(localStorage.getItem(MINE_KEY)||'null'); if(v&&typeof v==='object') MINE=Object.assign(MINE,v); }catch(e){}
+function saveMine(){ try{ localStorage.setItem(MINE_KEY,JSON.stringify(MINE)); }catch(e){} }
+/* a place as stored, and back */
+const slim=x=>x.t==='me'?{t:'me'}:Object.fromEntries(Object.entries({t:x.t==='stop'?'stop':x.t==='addr'||x.t==='street'||x.t==='place'?x.t:'pin',name:x.name,
+  lat:Math.round(x.lat*1e5)/1e5,lon:Math.round(x.lon*1e5)/1e5,code:x.code,area:x.area,kind:x.kind,label:x.label}).filter(([,v])=>v!=null));
+function fat(x){ if(!x) return null; if(x.t==='me') return {t:'me',name:T('myLoc')};
+  const y=Object.assign({},x); if(x.t==='stop'){ const i=S.findIndex(s=>s.code===x.code); if(i>=0&&stopRefs[i].length) y.stop=i; else y.t='pin'; } return y; }
+const samePlace=(a,b)=>!!a&&!!b&&(a.t==='me'||b.t==='me'?a.t===b.t:a.name===b.name&&distM(a.lat,a.lon,b.lat,b.lon)<40);
+const favIndex=x=>MINE.places.findIndex(p=>samePlace(p,x));
+function toggleFavPlace(x){ const i=favIndex(x); if(i>=0) MINE.places.splice(i,1); else MINE.places.unshift(slim(x)); saveMine(); }
+function addRecent(x){ if(!x||x.t==='me') return; MINE.recent=[slim(x),...MINE.recent.filter(p=>!samePlace(p,x))].slice(0,6); saveMine(); }
+const tripIndex=(f,t)=>MINE.trips.findIndex(r=>samePlace(r.from,f)&&samePlace(r.to,t));
+function saveTrip(time){ const i=tripIndex(plan.from,plan.to), r={from:slim(plan.from),to:slim(plan.to),time:time==null?null:Math.round(time/60)*60};
+  if(i>=0) MINE.trips[i]=r; else MINE.trips.unshift(r); MINE.trips=MINE.trips.slice(0,12); saveMine(); }
+/* one tap to fill a field with home, work or a favourite */
+function quickChips(which,skip){ const q=[['home',MINE.home],['work',MINE.work],...MINE.places.map((x,i)=>['p'+i,x])].filter(([,x])=>x&&!samePlace(x,skip));
+  if(!q.length) return '';
+  return `<div class="pquick" role="group" aria-label="${T(which==='from'?'fromPh':'toPh')}"><span class="pdot ${which==='from'?'o':'d'}" aria-hidden="true"></span>${q.map(([k,x])=>`<button class="chip" data-pmine="${k}" data-pw="${which}">${k==='home'?`<span class="pqic">${HOME_IC}</span>`:k==='work'?`<span class="pqic">${WORK_IC}</span>`:''}<span class="pqt">${esc(k==='home'?T('home'):k==='work'?T('work'):x.label||x.name)}</span></button>`).join('')}</div>`; }
+const mineName=x=>{ const f=favIndex(x); return (f>=0&&MINE.places[f].label)||x.label||(samePlace(x,MINE.home)?T('home'):samePlace(x,MINE.work)?T('work'):x.t==='me'?T('myLoc'):x.name); };
 
 /* places, streets and addresses (map/places.json), fetched the first time the planner is used */
 let PLACES=null, placesReq=null;
@@ -335,7 +360,7 @@ async function runPlan(){
 }
 
 /* ---------- screens ---------- */
-const placeLabel=x=>x?(x.t==='me'?T('myLoc'):x.name):'';
+const placeLabel=x=>x?(x.t==='me'?T('myLoc'):x.label||x.name):'';
 function planView(){
   if(plan.edit) return planEditView();
   const c=ctx();
@@ -343,14 +368,20 @@ function planView(){
     <button class="pfield ${plan.from?'':'empty'}${!plan.from&&plan.to?' need':''}" data-pfield="from"><span class="pdot o"></span><span>${plan.from?esc(placeLabel(plan.from)):T('fromPh')}</span></button>
     <button class="pfield ${plan.to?'':'empty'}" data-pfield="to"><span class="pdot d"></span><span>${plan.to?esc(placeLabel(plan.to)):T('toPh')}</span></button></div>
     <button class="ibtn pswap" data-pswap aria-label="${T('swap')}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16M3 8l4-4 4 4M17 20V4M21 16l-4 4-4-4"/></svg></button></div>`;
+  if(!plan.to) h+=quickChips('to',plan.from);
   /* no start yet: ask for it right under the fields, louder once the destination is in, so searching for
      where you're going first still works but the missing start can't be missed */
-  if(!plan.from) h+=`<div class="pstart${plan.to?' need':''}" role="group" aria-labelledby="pstart-h"><div class="pstart-h" id="pstart-h"><span class="pdot o"></span>${T('fromAsk')}</div>${startChoices('from')}</div>`;
+  if(!plan.from) h+=`<div class="pstart${plan.to?' need':''}" role="group" aria-labelledby="pstart-h"><div class="pstart-h" id="pstart-h"><span class="pdot o"></span>${T('fromAsk')}</div>${startChoices('from')}${quickChips('from',plan.to)}</div>`;
   h+=`<div class="ptime"><button class="chip" data-pleave="now" aria-pressed="${plan.leave==null}">${T(c.live?'leaveNow':'leaveFirst')}</button><label class="chip ptimel" data-on="${plan.leave!=null}">${T('leaveAt')} <input type="time" id="ptime" value="${plan.leave!=null?hhmm(plan.leave):''}"></label></div>`;
-  if(!plan.from||!plan.to){ if(!plan.to) h+=`<p class="note">${T('planHint')}</p>`; return h+'</div>'; }
+  if(!plan.from||!plan.to){
+    /* one tap to go home, to work or to a favourite */
+    if(!plan.to&&!MINE.home&&!MINE.work&&!MINE.places.length) h+=`<p class="note">${T('planHint')}</p>`;
+    if(MINE.trips.length) h+=`<div class="eyebrow">${T('savedTrips')}</div><div class="list">${MINE.trips.map((r,i)=>`<div class="prow"><button class="row pmain" data-ptrip="${i}"><span class="pic" aria-hidden="true">${STAR(true)}</span><div class="main"><div class="t1">${esc(mineName(r.from))} → ${esc(mineName(r.to))}</div>${r.time!=null?`<div class="t2">${T('around',{time:hhmm(r.time)})}</div>`:''}</div></button><button class="ibtn pstar" data-ptripx="${i}" aria-label="${T('removeTrip')}"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>`).join('')}</div>`;
+    return h+'</div>'; }
   if(plan.busy) return h+`<div class="list" aria-busy="true">${[0,1,2].map(()=>`<div class="dep skel" aria-hidden="true"><span class="badge">00</span><div class="main"><i></i><i></i></div><div class="when"><i></i></div></div>`).join('')}</div></div>`;
   if(!plan.opts||!plan.opts.length) return h+`<div class="list"><div class="empty">${T('noTrips')}</div></div></div>`;
-  h+=`<div class="eyebrow">${T('options')}${plan.atSec!=null?` · <span class="pupd">${T('updated',{time:hhmm(plan.atSec)})}</span>`:''}</div><div class="list">`;
+  const saved=tripIndex(plan.from,plan.to)>=0;
+  h+=`<div class="eyebrow peyeb"><span>${T('options')}${plan.atSec!=null?` · <span class="pupd">${T('updated',{time:hhmm(plan.atSec)})}</span>`:''}</span><button class="psave" data-psavetrip aria-pressed="${saved}">${STAR(saved)}${T(saved?'tripSaved':'saveTrip')}</button></div><div class="list">`;
   plan.opts.forEach((j,i)=>{ const dur=Math.round((j.arrive-j.leave)/60), b0=j.legs.find(l=>l.t==='bus');
     const leaveTxt=c.live&&j.leave-c.nowSec<3600?(j.leave-c.nowSec<60?T('leaveNowShort'):T('leaveIn',{n:Math.round((j.leave-c.nowSec)/60)})):T('leaveT',{time:hhmm(j.leave)});
     h+=`<button class="row popt ${i===plan.sel?'sel':''}" data-popt="${i}"><div class="main"><div class="t1"><b>${hhmm(j.leave)} – ${hhmm(j.arrive)}</b> <span class="pdur">${T('minTotal',{n:dur})}</span></div>
@@ -370,26 +401,46 @@ function startChoices(which){
 }
 function planEditView(){
   const which=plan.edit;
-  let h=`<div class="pad"><div class="pedit"><button class="back" data-pcancel aria-label="${T('back')}">${BACK}</button><input id="q-plan" class="search" type="search" autocomplete="off" placeholder="${T(which==='from'?'fromPh':'toPh')}" value="${esc(plan.q)}"></div><div id="res">${planSugs()}</div></div>`;
+  let h=`<div class="pad"><div class="pedit"><button class="back" data-pcancel aria-label="${T('back')}">${BACK}</button><input id="q-plan" class="search" type="search" autocomplete="off" placeholder="${T(plan.setting?(plan.setting==='home'?'searchHome':'searchWork'):which==='from'?'fromPh':'toPh')}" value="${esc(plan.q)}"></div><div id="res">${planSugs()}</div></div>`;
+  return h;
+}
+const STAR=on=>`<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 3.2l2.7 5.6 6.1.8-4.5 4.2 1.1 6.1L12 17l-5.4 2.9 1.1-6.1-4.5-4.2 6.1-.8z" fill="${on?'currentColor':'none'}" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>`;
+const PEN='<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4"/></svg>';
+const HOME_IC='<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 11l8-7 8 7v9h-5v-6H9v6H4z"/></svg>';
+const WORK_IC='<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3.5" y="7.5" width="17" height="12" rx="2"/><path d="M9 7.5V5h6v2.5M3.5 12.5h17"/></svg>';
+const placeIcon=x=>x.t==='stop'?'🚏':x.t==='addr'?'🏠':x.t==='street'?'🛣':x.t==='pin'?'📍':KIND_ICON(x.kind||'');
+const placeSub=x=>(x.t==='stop'?`${T('kStop')} · ${esc(x.code)}`:x.t==='addr'?T('kAddr'):x.t==='street'?T('kStreet'):x.t==='pin'?T('pointMap'):T('kPlace'))+(x.area?' · '+esc(x.area):'');
+/* a row you can pick, with a star (or other button) beside it */
+function pickRow(attr,x,title,side){ return `<div class="prow"><button class="row pmain" ${attr}><span class="pic" aria-hidden="true">${placeIcon(x)}</span><div class="main"><div class="t1">${esc(title)}</div><div class="t2">${title!==x.name?esc(x.name)+' · ':''}${placeSub(x)}</div></div></button>${side}</div>`; }
+const starBtn=(attr,on)=>`<button class="ibtn pstar" ${attr} aria-pressed="${on}" aria-label="${T(on?'favRemove':'favAdd')}">${STAR(on)}</button>`;
+/* home and work: the place, with a pencil to change it, or an "add" row */
+function homeRow(k){ const x=MINE[k], ic=k==='home'?HOME_IC:WORK_IC;
+  if(!x) return `<div class="prow"><button class="row pmain padd" data-pset="${k}"><span class="pic pmic" aria-hidden="true">${ic}</span><div class="main"><div class="t1">${T(k==='home'?'setHome':'setWork')}</div></div></button></div>`;
+  return `<div class="prow"><button class="row pmain" data-pmine="${k}"><span class="pic pmic" aria-hidden="true">${ic}</span><div class="main"><div class="t1">${T(k)}</div><div class="t2">${esc(x.name)}</div></div></button><button class="ibtn pstar" data-pset="${k}" aria-label="${T('change')} · ${T(k)}">${PEN}</button></div>`; }
+function mineLists(){
+  let h=`<div class="list pmine">${homeRow('home')}${homeRow('work')}</div>`;
+  if(MINE.places.length) h+=`<div class="eyebrow">${T('favourites')}</div><div class="list">${MINE.places.map((x,i)=>pickRow(`data-pmine="p${i}"`,x,x.label||x.name,
+    `<button class="ibtn pstar" data-prename="${i}" aria-label="${T('rename')}">${PEN}</button>${starBtn(`data-punfav="${i}"`,true)}`)).join('')}</div>`;
+  const rec=MINE.recent.filter(x=>favIndex(x)<0&&!samePlace(x,MINE.home)&&!samePlace(x,MINE.work));
+  if(rec.length) h+=`<div class="eyebrow">${T('recent')}</div><div class="list">${rec.map(x=>pickRow(`data-pmine="r${MINE.recent.indexOf(x)}"`,x,x.name,starBtn(`data-pfav="r${MINE.recent.indexOf(x)}"`,false))).join('')}</div>`;
   return h;
 }
 function planSugs(){
   let h='<div class="list">';
   if(!plan.q.trim()){
-    return `${startChoices(plan.edit)}<p class="note">${T('searchHint')}</p>`;
+    if(plan.setting) return `${startChoices(plan.edit)}<p class="note">${T(plan.setting==='home'?'searchHome':'searchWork')}</p>`;
+    return `${startChoices(plan.edit)}${mineLists()}<p class="note">${T('searchHint')}</p>`;
   }
   const res=planSearch(plan.q); planSugs.last=res;
   if(!PLACES) h+=`<div class="empty">${T('loading')}</div>`;
   else if(!res.length) h+=`<div class="empty">${T('noMatch')}</div>`;
-  res.forEach((x,i)=>{ const ic=x.t==='stop'?'🚏':x.t==='addr'?'🏠':x.t==='street'?'🛣':KIND_ICON(x.kind||'');
-    const sub=(x.t==='stop'?`${T('kStop')} · ${esc(x.code)}`:x.t==='addr'?T('kAddr'):x.t==='street'?T('kStreet'):T('kPlace'))+(x.area?' · '+esc(x.area):'');
-    h+=`<button class="row" data-psug="${i}"><span class="pic" aria-hidden="true">${ic}</span><div class="main"><div class="t1">${esc(x.name)}</div><div class="t2">${sub}</div></div></button>`; });
+  res.forEach((x,i)=>{ h+=pickRow(`data-psug="${i}"`,x,x.name,starBtn(`data-pfav="s${i}"`,favIndex(x)>=0)); });
   return h+'</div>';
 }
 function tripView(v){
   const j=plan.opts&&plan.opts[v.i]; if(!j) return `<div class="pad"><div class="empty">${T('noTrips')}</div></div>`;
   const c=ctx(), dur=Math.round((j.arrive-j.leave)/60);
-  let h=`<div class="dhead"><button class="back" data-back aria-label="${T('back')}">${BACK}</button><div class="main"><h2>${hhmm(j.leave)} – ${hhmm(j.arrive)}</h2><div class="sub">${T('minTotal',{n:dur})} · ${j.walk?T('walkOnly'):T(j.changes===0?'direct':j.changes===1?'oneChange':'nChanges',{n:j.changes})}</div></div></div><div class="pad"><ol class="ptrip">`;
+  let h=`<div class="dhead"><button class="back" data-back aria-label="${T('back')}">${BACK}</button><div class="main"><h2>${hhmm(j.leave)} – ${hhmm(j.arrive)}</h2><div class="sub">${T('minTotal',{n:dur})} · ${j.walk?T('walkOnly'):T(j.changes===0?'direct':j.changes===1?'oneChange':'nChanges',{n:j.changes})}</div></div>${(()=>{ const i=tripIndex(plan.from,plan.to), on=i>=0&&MINE.trips[i].time===Math.round(j.leave/60)*60; return `<button class="psave" data-psavetrip="${j.leave}" aria-pressed="${on}">${STAR(on)}${T(on?'tripSaved':'saveTrip')}</button>`; })()}</div><div class="pad"><ol class="ptrip">`;
   const nm=x=>x.toStop!=null?S[x.toStop].name:x.to?placeLabel(x.to):'';
   j.legs.forEach((l,i)=>{
     if(l.t==='walk'){ if(l.d<15&&i>0) return;     /* starting or ending at the stop itself: no walk */
@@ -446,7 +497,38 @@ function drawPlan(){
   planLayer.addTo(map);
 }
 function setPlace(which,x){
+  if(plan.setting){   /* choosing your home or work: "my location" becomes the spot you're at */
+    if(x.t==='me'&&meLL) x={t:'pin',name:nameNear(meLL[0],meLL[1]),lat:meLL[0],lon:meLL[1]};
+    if(x.t!=='me'){ MINE[plan.setting]=slim(x); saveMine(); x=Object.assign({},x,{label:T(plan.setting)}); } plan.setting=null; }
+  else addRecent(x);
   plan[which]=x; plan.edit=null; plan.q=''; plan.opts=null;
   if(plan.from&&plan.to) runPlan(); else render();
   syncMap();
+}
+
+/* taps on your places, saved trips and their buttons; true when handled */
+function mineClick(t){
+  const d=t.dataset, which=d.pw||plan.edit||'to';
+  const pick=k=>k==='home'?MINE.home:k==='work'?MINE.work:k[0]==='p'?MINE.places[+k.slice(1)]:k[0]==='r'?MINE.recent[+k.slice(1)]:k[0]==='s'?planSugs.last&&planSugs.last[+k.slice(1)]:null;
+  if(d.pmine!=null){ const x=pick(d.pmine); if(!x) return true; const y=fat(x); if(d.pmine==='home'||d.pmine==='work') y.label=T(d.pmine); else if(x.label) y.label=x.label;
+    if(plan.setting) plan.setting=null; setPlace(which,y); return true; }
+  if(d.pset!=null){ plan.setting=d.pset; plan.edit=plan.edit||'to'; plan.q=''; render(); setTimeout(()=>{const q=$('#q-plan');if(q)q.focus()},60); return true; }
+  if(d.pfav!=null){ const x=pick(d.pfav); if(x){ toggleFavPlace(x); const r=$('#res'); if(r) r.innerHTML=planSugs(); } return true; }
+  if(d.punfav!=null){ MINE.places.splice(+d.punfav,1); saveMine(); const r=$('#res'); if(r) r.innerHTML=planSugs(); return true; }
+  if(d.prename!=null){ const x=MINE.places[+d.prename]; if(!x) return true; const n=prompt(T('renamePrompt'),x.label||x.name);
+    if(n!=null){ if(n.trim()&&n.trim()!==x.name) x.label=n.trim(); else delete x.label; saveMine(); const r=$('#res'); if(r) r.innerHTML=planSugs(); } return true; }
+  if(d.psavetrip!=null){ const i=tripIndex(plan.from,plan.to);
+    if(d.psavetrip===''){ if(i>=0){ MINE.trips.splice(i,1); saveMine(); } else saveTrip(plan.leave); }
+    else { const tm=+d.psavetrip; if(i>=0&&MINE.trips[i].time===Math.round(tm/60)*60){ MINE.trips.splice(i,1); saveMine(); } else { saveTrip(tm); toast(T('tripSaved')); } }
+    render(true); return true; }
+  if(d.ptripx!=null){ MINE.trips.splice(+d.ptripx,1); saveMine(); render(true); return true; }
+  if(d.ptrip!=null){ const r=MINE.trips[+d.ptrip]; if(!r) return true; const c=ctx();
+    const go=()=>{ plan.from=fat(r.from); plan.to=fat(r.to);
+      for(const k of ['from','to']){ const x=plan[k]; if(x.t!=='me') x.label=mineName(r[k])!==x.name?mineName(r[k]):undefined; else Object.assign(x,{lat:meLL[0],lon:meLL[1]}); }
+      /* planning ahead (the usual time is over half an hour away): from that time; otherwise from now */
+      plan.leave=r.time!=null&&(!c.live||r.time>c.nowSec+1800)?r.time:null; plan.edit=null; plan.opts=null; runPlan(); syncMap(); };
+    if(r.from.t!=='me'||meLL) go();
+    else navigator.geolocation.getCurrentPosition(pos=>{placeMe([pos.coords.latitude,pos.coords.longitude],pos.coords.accuracy);startWatch();go()},err=>toast(T(err&&err.code===1?'locOff':'locFail')),{enableHighAccuracy:true,timeout:10000,maximumAge:5000});
+    return true; }
+  return false;
 }
