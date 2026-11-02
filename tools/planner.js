@@ -9,6 +9,10 @@ const WALK_MS=1.25, DETOUR=1.25, MAX_WALK=1000, MAX_WALK_FAR=1600, XFER_M=300, M
 const walkSec=m=>m/WALK_MS, walkMin=m=>Math.max(1,Math.round(walkSec(m)/60));
 const plan={from:null,to:null,edit:null,q:'',leave:null,opts:null,busy:false,pick:null,sel:0,err:null,seq:0};
 const planOn=()=>st.panel&&st.tab==='plan';
+/* the plan stays while the app is open, so you can look at a line or stop and come back to it; on
+   coming back after a minute or more, "leave now" trips are worked out again so the times aren't stale */
+function planFresh(){ if(plan.from&&plan.to&&plan.leave==null&&!plan.busy&&!plan.edit&&(!plan.at||Date.now()-plan.at>60000)) runPlan(); }
+function planReset(){ Object.assign(plan,{from:null,to:null,edit:null,q:'',leave:null,opts:null,busy:false,sel:0,err:null,at:0,atSec:null}); plan.seq++; st.stack=[]; }
 
 /* places, streets and addresses (map/places.json), fetched the first time the planner is used */
 let PLACES=null, placesReq=null;
@@ -326,7 +330,7 @@ async function runPlan(){
   opts.sort((a,b)=>a.arrive-b.arrive||a.changes-b.changes).splice(6);
   if(direct<=3000){ const w=walkSec(direct); opts.push({walk:true,leave:dep0,arrive:dep0+w,changes:0,walkM:direct,legs:[{t:'walk',d:direct,from:o,to:dst,start:dep0,end:dep0+w}]});
     opts.sort((a,b)=>a.arrive-b.arrive); }
-  plan.opts=opts; plan.busy=false; plan.sel=0; planDrawn=null;
+  plan.opts=opts; plan.busy=false; plan.sel=0; planDrawn=null; plan.at=Date.now(); plan.atSec=c.live?c.nowSec:null;
   if(seq===plan.seq){ render(true); syncMap(); }
 }
 
@@ -335,7 +339,7 @@ const placeLabel=x=>x?(x.t==='me'?T('myLoc'):x.name):'';
 function planView(){
   if(plan.edit) return planEditView();
   const c=ctx();
-  let h=`<div class="pad"><div class="pbox"><div class="pfields">
+  let h=`<div class="pad">${plan.from||plan.to?`<div class="phead"><button class="pnew" data-pnew><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>${T('newRoute')}</button></div>`:''}<div class="pbox"><div class="pfields">
     <button class="pfield ${plan.from?'':'empty'}${!plan.from&&plan.to?' need':''}" data-pfield="from"><span class="pdot o"></span><span>${plan.from?esc(placeLabel(plan.from)):T('fromPh')}</span></button>
     <button class="pfield ${plan.to?'':'empty'}" data-pfield="to"><span class="pdot d"></span><span>${plan.to?esc(placeLabel(plan.to)):T('toPh')}</span></button></div>
     <button class="ibtn pswap" data-pswap aria-label="${T('swap')}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16M3 8l4-4 4 4M17 20V4M21 16l-4 4-4-4"/></svg></button></div>`;
@@ -346,7 +350,7 @@ function planView(){
   if(!plan.from||!plan.to){ if(!plan.to) h+=`<p class="note">${T('planHint')}</p>`; return h+'</div>'; }
   if(plan.busy) return h+`<div class="list" aria-busy="true">${[0,1,2].map(()=>`<div class="dep skel" aria-hidden="true"><span class="badge">00</span><div class="main"><i></i><i></i></div><div class="when"><i></i></div></div>`).join('')}</div></div>`;
   if(!plan.opts||!plan.opts.length) return h+`<div class="list"><div class="empty">${T('noTrips')}</div></div></div>`;
-  h+=`<div class="eyebrow">${T('options')}</div><div class="list">`;
+  h+=`<div class="eyebrow">${T('options')}${plan.atSec!=null?` · <span class="pupd">${T('updated',{time:hhmm(plan.atSec)})}</span>`:''}</div><div class="list">`;
   plan.opts.forEach((j,i)=>{ const dur=Math.round((j.arrive-j.leave)/60), b0=j.legs.find(l=>l.t==='bus');
     const leaveTxt=c.live&&j.leave-c.nowSec<3600?(j.leave-c.nowSec<60?T('leaveNowShort'):T('leaveIn',{n:Math.round((j.leave-c.nowSec)/60)})):T('leaveT',{time:hhmm(j.leave)});
     h+=`<button class="row popt ${i===plan.sel?'sel':''}" data-popt="${i}"><div class="main"><div class="t1"><b>${hhmm(j.leave)} – ${hhmm(j.arrive)}</b> <span class="pdur">${T('minTotal',{n:dur})}</span></div>

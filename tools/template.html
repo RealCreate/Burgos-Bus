@@ -126,6 +126,9 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .popt .t1 b{font-size:1.05rem}
 .popt.sel{box-shadow:inset 3px 0 0 var(--accent)}
 .pdur{color:var(--muted);font-weight:600;margin-inline-start:6px}
+.phead{display:flex;justify-content:flex-end;margin:-4px 0 6px}
+.pnew{display:inline-flex;align-items:center;gap:5px;padding:4px 2px;font-weight:700;font-size:.88rem;color:var(--accent)}
+.pupd{text-transform:none;letter-spacing:0;font-weight:600}
 .psteps{display:flex;align-items:center;flex-wrap:wrap;gap:4px;margin:6px 0 4px}
 .parr{color:var(--muted);font-size:.9rem}
 .pwalk{display:inline-flex;align-items:center;gap:2px;font-size:.8rem;font-weight:700;color:var(--muted)}
@@ -2245,7 +2248,8 @@ function openStop(s){st.panel=true;stopWait.delete(s);st.stack.push({kind:'stop'
 
 document.addEventListener('click',e=>{
   const t=e.target.closest('button,a'); if(!t) return;
-  if(t.dataset.tab){st.tab=t.dataset.tab;st.stack=[];if(st.tab==='plan')loadPlaces();render();view.scrollTop=0;return}
+  if(t.dataset.tab){st.tab=t.dataset.tab;st.stack=[];if(st.tab==='plan')loadPlaces();render();view.scrollTop=0;if(st.tab==='plan')planFresh();return}
+  if(t.hasAttribute('data-pnew')){planReset();render();syncMap();view.scrollTop=0;return}
   if(t.dataset.pfield){plan.edit=t.dataset.pfield;plan.q='';render();loadPlaces().then(()=>{if(plan.edit){const r=$('#res');if(r)r.innerHTML=planSugs()}});setTimeout(()=>{const q=$('#q-plan');if(q)q.focus()},60);return}
   if(t.hasAttribute('data-pcancel')){plan.edit=null;render();return}
   if(t.hasAttribute('data-pswap')){[plan.from,plan.to]=[plan.to,plan.from];plan.opts=null;if(plan.from&&plan.to)runPlan();else render();syncMap();return}
@@ -2262,7 +2266,7 @@ document.addEventListener('click',e=>{
   if(t.hasAttribute('data-share')){shareCurrent();return}
   if(t.dataset.favLine!=null){toggleFav('lines',+t.dataset.favLine,t);return}
   if(t.dataset.favStop!=null){toggleFav('stops',+t.dataset.favStop,t);return}
-  if(t.dataset.openpanel!=null){const w=t.dataset.openpanel;st.panel=true;if(w!=='current'){st.tab=w;st.stack=[]}render();view.scrollTop=0;return}
+  if(t.dataset.openpanel!=null){const w=t.dataset.openpanel;st.panel=true;if(w!=='current'){st.tab=w;st.stack=[]}render();view.scrollTop=0;if(st.tab==='plan')planFresh();return}
   if(t.id==='close-panel'){st.panel=false;st.full=false;render();return}
   if(t.id==='grow'){st.full=!st.full;render(true);return}
   if(t.hasAttribute('data-clearsel')){st.stack=[];render();return}
