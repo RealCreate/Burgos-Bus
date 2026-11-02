@@ -336,11 +336,14 @@ function planView(){
   if(plan.edit) return planEditView();
   const c=ctx();
   let h=`<div class="pad"><div class="pbox"><div class="pfields">
-    <button class="pfield ${plan.from?'':'empty'}" data-pfield="from"><span class="pdot o"></span><span>${plan.from?esc(placeLabel(plan.from)):T('fromPh')}</span></button>
+    <button class="pfield ${plan.from?'':'empty'}${!plan.from&&plan.to?' need':''}" data-pfield="from"><span class="pdot o"></span><span>${plan.from?esc(placeLabel(plan.from)):T('fromPh')}</span></button>
     <button class="pfield ${plan.to?'':'empty'}" data-pfield="to"><span class="pdot d"></span><span>${plan.to?esc(placeLabel(plan.to)):T('toPh')}</span></button></div>
     <button class="ibtn pswap" data-pswap aria-label="${T('swap')}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16M3 8l4-4 4 4M17 20V4M21 16l-4 4-4-4"/></svg></button></div>`;
+  /* no start yet: ask for it right under the fields, louder once the destination is in, so searching for
+     where you're going first still works but the missing start can't be missed */
+  if(!plan.from) h+=`<div class="pstart${plan.to?' need':''}" role="group" aria-labelledby="pstart-h"><div class="pstart-h" id="pstart-h"><span class="pdot o"></span>${T('fromAsk')}</div>${startChoices('from')}</div>`;
   h+=`<div class="ptime"><button class="chip" data-pleave="now" aria-pressed="${plan.leave==null}">${T(c.live?'leaveNow':'leaveFirst')}</button><label class="chip ptimel" data-on="${plan.leave!=null}">${T('leaveAt')} <input type="time" id="ptime" value="${plan.leave!=null?hhmm(plan.leave):''}"></label></div>`;
-  if(!plan.from||!plan.to){ h+=`<p class="note">${T('planHint')}</p>`; return h+'</div>'; }
+  if(!plan.from||!plan.to){ if(!plan.to) h+=`<p class="note">${T('planHint')}</p>`; return h+'</div>'; }
   if(plan.busy) return h+`<div class="list" aria-busy="true">${[0,1,2].map(()=>`<div class="dep skel" aria-hidden="true"><span class="badge">00</span><div class="main"><i></i><i></i></div><div class="when"><i></i></div></div>`).join('')}</div></div>`;
   if(!plan.opts||!plan.opts.length) return h+`<div class="list"><div class="empty">${T('noTrips')}</div></div></div>`;
   h+=`<div class="eyebrow">${T('options')}</div><div class="list">`;
@@ -354,6 +357,13 @@ function planView(){
 }
 const WALK_ICON='<svg class="walkic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="13" cy="4" r="2" fill="currentColor"/><path d="M10 21l2-6 3 3v5M8 12l3-4 4 2 2 3M11 8l-1 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 function tripChips(j){ return j.legs.filter(l=>l.t==='bus'||l.d>60).map(l=>l.t==='bus'?badge(l.p.r,'sm'):`<span class="pwalk">${WALK_ICON}${walkMin(l.d)}</span>`).join('<span class="parr" aria-hidden="true">›</span>'); }
+/* "My location" and "Choose on map" as two cards that don't look alike: a filled blue tile with a
+   GPS target for where you are now, a plain tile with a folded map and pin for picking a spot */
+const LOC_ICON='<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="2.3" fill="currentColor" stroke="none"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/></svg>';
+const MAP_ICON='<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4 3.5 6v14L9 18l6 2 5.5-2V4L15 6 9 4zM9 4v14M15 6v5"/><path d="M17.5 21.5s-3-2.6-3-5a3 3 0 0 1 6 0c0 2.4-3 5-3 5z" fill="var(--surface)"/><circle cx="17.5" cy="16.4" r="1" fill="currentColor" stroke="none"/></svg>';
+function startChoices(which){
+  return `<div class="pchoices">${navigator.geolocation?`<button class="pchoice loc" data-psug="me" data-pw="${which}"><span class="pchic">${LOC_ICON}</span><span class="pcht"><b>${T('myLoc')}</b><small>${T('myLocSub')}</small></span></button>`:''}<button class="pchoice map" data-psug="map" data-pw="${which}"><span class="pchic">${MAP_ICON}</span><span class="pcht"><b>${T('onMap')}</b><small>${T('onMapSub')}</small></span></button></div>`;
+}
 function planEditView(){
   const which=plan.edit;
   let h=`<div class="pad"><div class="pedit"><button class="back" data-pcancel aria-label="${T('back')}">${BACK}</button><input id="q-plan" class="search" type="search" autocomplete="off" placeholder="${T(which==='from'?'fromPh':'toPh')}" value="${esc(plan.q)}"></div><div id="res">${planSugs()}</div></div>`;
@@ -362,9 +372,7 @@ function planEditView(){
 function planSugs(){
   let h='<div class="list">';
   if(!plan.q.trim()){
-    if(navigator.geolocation) h+=`<button class="row" data-psug="me"><span class="pic">📍</span><div class="main"><div class="t1">${T('myLoc')}</div></div></button>`;
-    h+=`<button class="row" data-psug="map"><span class="pic">🗺</span><div class="main"><div class="t1">${T('onMap')}</div></div></button>`;
-    return h+`</div><p class="note">${T('searchHint')}</p>`;
+    return `${startChoices(plan.edit)}<p class="note">${T('searchHint')}</p>`;
   }
   const res=planSearch(plan.q); planSugs.last=res;
   if(!PLACES) h+=`<div class="empty">${T('loading')}</div>`;

@@ -84,7 +84,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .pfields{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--surface);border-radius:12px;box-shadow:var(--shadow);overflow:hidden}
 .pfield{display:flex;align-items:center;gap:10px;padding:12px 14px;text-align:start;font:inherit;font-weight:600;color:var(--ink);min-height:46px}
 .pfield+.pfield{border-top:1px solid var(--rule)}
-.pfield.empty{color:var(--muted);font-weight:400}
+.pfield.empty{color:var(--muted);font-weight:400;padding:12px 14px;text-align:start}  /* not the empty-list .empty padding */
 .pfield span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pdot{flex:none;width:12px;height:12px;border-radius:50%;box-shadow:inset 0 0 0 3px var(--accent)}
 .pdot.d{border-radius:3px;box-shadow:none;background:var(--warn)}
@@ -95,6 +95,34 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .pedit{display:flex;align-items:center;gap:8px;margin-bottom:6px}
 .pedit .search{flex:1}
 .pic{flex:none;width:28px;text-align:center;font-size:1.2rem}
+/* start missing: a card under the fields; .need once the destination is chosen */
+.pfield.need{box-shadow:inset 3px 0 0 var(--accent);background:color-mix(in srgb,var(--accent) 8%,var(--surface));color:var(--accent);font-weight:600}
+.pstart{margin-top:12px;padding:12px;border-radius:14px;background:var(--surface);box-shadow:var(--shadow);border:1px solid var(--rule)}
+.pstart.need{border:2px solid var(--accent);background:color-mix(in srgb,var(--accent) 7%,var(--surface))}
+.pstart-h{display:flex;align-items:center;gap:8px;font-weight:700;margin:0 2px 10px}
+.pchoices{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:4px}
+.pchoice{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;text-align:start;min-height:56px;background:var(--surface);border:1.5px solid var(--rule);color:var(--ink);transition:transform 140ms var(--ease-out)}
+.pchoice:active{transform:scale(.97)}
+.pchoice b{display:block;font-weight:700;line-height:1.2}
+.pchoice small{display:block;font-size:.76rem;color:var(--muted);line-height:1.3;margin-top:2px}
+.pcht{min-width:0}
+.pchic{flex:none;width:36px;height:36px;border-radius:10px;display:grid;place-items:center}
+.pchic svg{width:22px;height:22px}
+.pchoice.loc{background:var(--accent-fill);border-color:var(--accent-fill);color:#fff}
+.pchoice.loc small{color:rgba(255,255,255,.85)}
+.pchoice.loc .pchic{background:rgba(255,255,255,.2);color:#fff}
+.pchoice.map .pchic{background:var(--sunk);color:var(--ink)}
+.pchoice.map{border-style:dashed}
+/* choosing a point on the map: a banner that stays until you tap or cancel */
+.pickbar{position:absolute;z-index:1060;top:calc(var(--hdr) + 12px);left:12px;right:76px;margin-inline:auto;width:fit-content;max-width:440px;
+  display:flex;align-items:center;gap:10px;padding:8px 8px 8px 14px;border-radius:999px;background:var(--accent-fill);color:#fff;font-weight:700;box-shadow:var(--float)}
+.pickbar[hidden]{display:none!important}
+.pickbar .pdot{box-shadow:inset 0 0 0 3px #fff}
+.pickbar .pdot.d{background:#fff}
+.pickbar span:nth-child(2){min-width:0;line-height:1.25}
+.pickbar .x{flex:none;width:32px;height:32px;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.22);color:#fff}
+.picking .fab,.picking .hint,.picking .selchip{display:none!important}
+.picking #map{cursor:crosshair}
 .popt .t1 b{font-size:1.05rem}
 .popt.sel{box-shadow:inset 3px 0 0 var(--accent)}
 .pdur{color:var(--muted);font-weight:600;margin-inline-start:6px}
@@ -547,6 +575,7 @@ body{font:16px/1.4 var(--font-body);-webkit-font-smoothing:antialiased;letter-sp
     <div class="hint" id="hint" hidden role="status"><span data-i18n="pickHint">Choose your lines to see them on the map</span><button class="x" id="hintx" data-i18n-aria="close" aria-label="Close"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
     <div class="selchip" id="selchip" hidden></div>
     <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+    <div class="pickbar" id="pickbar" role="status" aria-live="polite" hidden><span class="pdot o" id="pickdot"></span><span id="picktxt"></span><button class="x" data-pickcancel aria-label="Cancel" data-i18n-aria="cancel"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
     <main class="panel" id="panel" aria-label="Lines and stops" data-i18n-aria="panelAria" hidden>
       <div class="pbar"><span class="grabber" aria-hidden="true"></span>
         <button class="ibtn grab" id="grow" aria-label="Expand panel"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m6 15 6-6 6 6"/></svg></button>
@@ -1357,7 +1386,7 @@ function initMap(){
     if(e.popup._source&&e.popup._source===busFocusSrc){ busFocusSrc=null; setBusFocus(null); }});
   map.on('zoomend',drawArrows);
   map.on('click',e=>{
-    if(plan.pick){ const which=plan.pick; plan.pick=null; st.panel=true; st.tab='plan'; st.stack=[];
+    if(plan.pick){ const which=plan.pick; setPick(null); st.panel=true; st.tab='plan'; st.stack=[];
       loadPlaces().then(()=>setPlace(which,{t:'pin',name:nameNear(e.latlng.lat,e.latlng.lng),lat:e.latlng.lat,lon:e.latlng.lng})); return; }
     if(st.panel&&!wide()&&st.full){st.full=false;render(true)} });
 }
@@ -1372,7 +1401,7 @@ function setupDoubleTap(){
     map.setZoomAround(pt,Math.min(map.getMaxZoom(),Math.round(map.getZoom())+1),{animate:!reduceMotion});
     lastZoomAt=performance.now();
   };
-  const onUi=t=>t.closest('.leaflet-control,.leaflet-popup,.vehwrap,.selchip,.fab,.hint');
+  const onUi=t=>t.closest('.leaflet-control,.leaflet-popup,.vehwrap,.selchip,.fab,.hint,.pickbar');
   let down=null;
   el.addEventListener('pointerdown',e=>{ if(e.pointerType==='mouse'||!e.isPrimary) { down=null; return; } down={x:e.clientX,y:e.clientY,t:e.timeStamp}; },{passive:true});
   el.addEventListener('pointerup',e=>{
@@ -2171,6 +2200,10 @@ function shareCurrent(){
   if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(done,()=>prompt(T('share'),url));
   else prompt(T('share'),url);
 }
+/* choosing the start or destination by tapping the map */
+function setPick(which){ plan.pick=which||null; document.body.classList.toggle('picking',!!which); const b=$('#pickbar');
+  if(which){ $('#picktxt').textContent=T(which==='from'?'tapStart':'tapEnd'); $('#pickdot').className='pdot '+(which==='from'?'o':'d'); b.hidden=false; }
+  else b.hidden=true; }
 let toastTimer=0;
 function toast(msg){ const el=$('#toast'); el.textContent=msg; el.hidden=false; void el.offsetWidth; el.classList.add('show');
   clearTimeout(toastTimer); toastTimer=setTimeout(()=>{ el.classList.remove('show'); setTimeout(()=>{el.hidden=true},250); },1800); }
@@ -2199,8 +2232,9 @@ document.addEventListener('click',e=>{
   if(t.hasAttribute('data-pcancel')){plan.edit=null;render();return}
   if(t.hasAttribute('data-pswap')){[plan.from,plan.to]=[plan.to,plan.from];plan.opts=null;if(plan.from&&plan.to)runPlan();else render();syncMap();return}
   if(t.dataset.pleave==='now'){plan.leave=null;runPlan();return}
-  if(t.dataset.psug!=null){const which=plan.edit,v=t.dataset.psug;
-    if(v==='map'){plan.pick=which;plan.edit=null;st.panel=false;render();toast(T(which==='from'?'tapStart':'tapEnd'));return}
+  if(t.hasAttribute('data-pickcancel')){setPick(null);st.panel=true;st.tab='plan';st.stack=[];render();return}
+  if(t.dataset.psug!=null){const which=t.dataset.pw||plan.edit,v=t.dataset.psug;
+    if(v==='map'){plan.edit=null;st.panel=false;render();setPick(which);return}
     if(v==='me'){ const use=()=>setPlace(which,{t:'me',name:T('myLoc'),lat:meLL[0],lon:meLL[1]});
       if(meLL) use(); else navigator.geolocation.getCurrentPosition(pos=>{placeMe([pos.coords.latitude,pos.coords.longitude],pos.coords.accuracy);startWatch();use()},err=>toast(T(err&&err.code===1?'locOff':'locFail')),{enableHighAccuracy:true,timeout:10000,maximumAge:5000});
       return}
@@ -2279,6 +2313,7 @@ $('#q-lang').addEventListener('input',langList);
 document.addEventListener('keydown',e=>{
   if(e.key!=='Escape') return;
   if($('#langsheet').classList.contains('open')){ openLang(false); return; }
+  if(plan.pick){ setPick(null); st.panel=true; st.tab='plan'; st.stack=[]; render(); return; }
   if(map&&map._popup&&map.hasLayer(map._popup)){ map.closePopup(); return; }
   if(st.panel){ if(st.stack.length) st.stack.pop(); else { st.panel=false; st.full=false; } render(); }
 });
