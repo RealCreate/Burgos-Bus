@@ -46,7 +46,13 @@ function planSearch(q){
   const top=out.slice(0,80); top.forEach(x=>{ if(x.t!=='stop'&&!nearStops(x.lat,x.lon,MAX_WALK_FAR).length) x.sc+=1.5; });
   top.sort((a,b)=>a.sc-b.sc||a.name.length-b.name.length);
   /* the same place mapped twice (a shop and its building, a stop on both sides of the road) shows once */
-  const res=[]; for(const x of top){ if(res.some(y=>y.name===x.name&&distM(y.lat,y.lon,x.lat,x.lon)<(x.t==='stop'?150:y.area===x.area?1000:60))) continue; res.push(x); if(res.length>=12) break; }
+  const res=[]; for(const x of top){
+    /* a stop named after a place ("Aeropuerto de Burgos", "Hospital Universitario") stands in for it: the map
+       pins a big site (an airport, a campus) at its middle, the stop is where you actually arrive */
+    const same=res.findIndex(y=>norm(y.name)===norm(x.name)&&(x.t==='stop')!==(y.t==='stop')&&distM(y.lat,y.lon,x.lat,x.lon)<1500);
+    if(same>=0){ if(x.t==='stop') res[same]=x; continue; }
+    if(res.some(y=>y.name===x.name&&distM(y.lat,y.lon,x.lat,x.lon)<(x.t==='stop'?150:y.area===x.area?1000:60))) continue;
+    res.push(x); if(res.length>=12) break; }
   return res;
 }
 /* a house number on a street: the mapped one, or if it isn't mapped, a point between its neighbours on the
@@ -374,7 +380,8 @@ function tripView(v){
   let h=`<div class="dhead"><button class="back" data-back aria-label="${T('back')}">${BACK}</button><div class="main"><h2>${hhmm(j.leave)} – ${hhmm(j.arrive)}</h2><div class="sub">${T('minTotal',{n:dur})} · ${j.walk?T('walkOnly'):T(j.changes===0?'direct':j.changes===1?'oneChange':'nChanges',{n:j.changes})}</div></div></div><div class="pad"><ol class="ptrip">`;
   const nm=x=>x.toStop!=null?S[x.toStop].name:x.to?placeLabel(x.to):'';
   j.legs.forEach((l,i)=>{
-    if(l.t==='walk'){ if(l.d<15&&!(i===0||i===j.legs.length-1)) return;
+    if(l.t==='walk'){ if(l.d<15&&i>0) return;     /* starting or ending at the stop itself: no walk */
+      if(l.d<15){ h+=`<li class="pw"><span class="ptime-l">${l.start!=null?hhmm(l.start):''}</span><div><b>${esc(placeLabel(l.from))}</b></div></li>`; return; }
       const dest=l.toStop!=null?S[l.toStop].name:placeLabel(l.to);
       h+=`<li class="pw"><span class="ptime-l">${l.start!=null?hhmm(l.start):''}</span><div><b>${i===0&&l.from?esc(placeLabel(l.from)):''}</b><div class="t2">${WALK_ICON} ${T('walkTo',{n:walkMin(l.d),m:Math.round(l.d/10)*10,place:esc(dest)})}</div></div></li>`; }
     else { const x=R[l.p.r], n=l.ai-l.bi, wait=c.live?l.dep-c.nowSec:null;
@@ -394,6 +401,15 @@ const planMapOn=()=>{ const top=st.stack[st.stack.length-1]; return planOn()&&(!
 function planShown(){ if(!planMapOn()||!plan.opts||!plan.opts.length) return null; const top=st.stack[st.stack.length-1]; return plan.opts[top&&top.kind==='trip'?top.i:plan.sel]||null; }
 function slice(p,bi,ai){ const {pts,cum}=SH[p.sh], d0=p.dist[bi], d1=p.dist[ai], out=[pointAlong(p.sh,d0)];
   for(let i=0;i<pts.length;i++) if(cum[i]>d0&&cum[i]<d1) out.push(pts[i]); out.push(pointAlong(p.sh,d1)); return out; }
+/* fit the map to a trip in the part of the screen the panel leaves free. A long trip (to the airport) needs
+   more room than the furthest zoom-out allows; plain fitBounds then lets the map's edge push the view off
+   the trip, so the trip's middle is centred by hand, at least half a step in from the furthest zoom. */
+function fitTrip(b){
+  const o=fitPad(), tl=L.point(o.paddingTopLeft), br=L.point(o.paddingBottomRight);
+  const z=Math.min(17,Math.max(map.getBoundsZoom(b,false,tl.add(br)),map.getMinZoom()+.5));
+  const c=map.project(b.getCenter(),z).add(br.subtract(tl).divideBy(2));
+  map.setView(map.unproject(c,z),z,{animate:false});
+}
 function drawPlan(){
   if(!map) return; const j=planShown(), sig=j?(j.sig||'walk')+'|'+j.leave:null;
   if(planLayer){ planLayer.remove(); planLayer=null; }
@@ -413,7 +429,7 @@ function drawPlan(){
         const pb=l.to?[l.to.lat,l.to.lon]:[S[l.toStop].lat,S[l.toStop].lon]; all.push(pa,pb);
         const wp=walkPath(pa,pb); all.push(...wp);
         L.polyline(wp,{pane:'plan',color:isDarkNow()?'#d1d1d6':'#3a3a3c',weight:4,dashArray:'1 8',lineCap:'round',opacity:.95,interactive:false}).addTo(planLayer); } }
-    if(sig!==planDrawn&&all.length){ planDrawn=sig; map.fitBounds(L.latLngBounds(all),fitPad()); }
+    if(sig!==planDrawn&&all.length){ planDrawn=sig; fitTrip(L.latLngBounds(all)); }
   }
   planLayer.addTo(map);
 }
