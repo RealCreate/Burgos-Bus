@@ -1287,7 +1287,9 @@ function initMap(){
      whole bus network. The box is big enough to fill a phone screen at that zoom. Elastic, so a drag towards the edge stops softly instead of hitting a wall. */
   if(STANDALONE){
     const mb=L.latLngBounds(MAP_BOUNDS);
-    map.setMaxBounds(mb); map.options.maxBoundsViscosity=.85;
+    /* a little slack beyond the map's edge (5 km north-south, 2.5 km east-west, plain background there), so a
+       trip or line near the edge can still be shown above the panel on a phone */
+    map.setMaxBounds(L.latLngBounds([mb.getSouth()-.045,mb.getWest()-.03],[mb.getNorth()+.045,mb.getEast()+.03])); map.options.maxBoundsViscosity=.85;
     map.setMinZoom(Math.min(Math.floor(map.getBoundsZoom(b,false)*2)/2,Math.ceil(map.getBoundsZoom(mb,true)*2)/2)); map.setMaxZoom(19);
   }
   if(STANDALONE){
