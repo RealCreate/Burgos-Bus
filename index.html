@@ -1284,8 +1284,8 @@ body{font:16px/1.4 var(--font-body);-webkit-font-smoothing:antialiased;letter-sp
 (function(){
 "use strict";
 const STANDALONE = true;
-const BUILD = '02 Nov 13:29';
-const BUILD_ID = '1793622563';
+const BUILD = '02 Nov 14:18';
+const BUILD_ID = '1793625508';
 /* The street map is the site's own: an OpenStreetMap extract of Burgos only (map/burgos.pmtiles, built by
    .github/workflows/build-map.yml), drawn on the phone by protomaps-leaflet. MAP_BOUNDS is the box that file
    covers; the map can't be dragged or zoomed out beyond it. Keep it in step with BBOX in that workflow.
@@ -3083,9 +3083,30 @@ function tidy(legs,o,dst,del,c,maxWalk,oM,dM){
       for(let j=a.bi+1;j<a.p.s.length;j++){ if(!open(a,j)) continue; const sj=S[a.p.s[j]];
         const d=dst.stop===a.p.s[j]?0:dM.get(a.p.s[j]); if(d==null||d>maxWalk) continue; void sj;
         const t=at(a,j)+walkSec(d); if(!best||t<best.t-30||(Math.abs(t-best.t)<=30&&d<best.d)) best={j,d,t}; }
+      /* don't ride on only to walk back: if the bus passes the destination and you then walk back the way
+         it came (round a roundabout, say), get off at an earlier stop that gets you there almost as soon -
+         its edge (walking counted double, as in cost()) is within BACK_SLACK and rests on timetable times
+         between stops, which the bus can lose at a light */
+      if(best&&walksBack(a,best.j,dst)){
+        for(let j=best.j-1;j>a.bi;j--){ if(!open(a,j)) continue;
+          const d=dst.stop===a.p.s[j]?0:dM.get(a.p.s[j]); if(d==null||d>maxWalk) continue;
+          const t=at(a,j)+walkSec(d);    /* the extra walking counts double, as in cost() */
+          if(t+walkSec(d)<=best.t+walkSec(best.d)+BACK_SLACK&&!walksBack(a,j,dst)){ best={j,d,t}; break; } } }
       if(best){ a.ai=best.j; w.d=best.d; w.fromStop=a.p.s[best.j]; } }
   }
   return legs;
+}
+/* does getting off bus leg b at its stop j mean walking back the way the bus just came? Compares the bus's
+   heading over its last ~120 m into the stop with the first ~100 m of the walk on to dst. */
+const BACK_SLACK=120;
+function walksBack(b,j,dst){
+  const p=b.p, s=S[p.s[j]], d=p.dist[j]; if(d==null||!SH[p.sh]) return false;
+  const a=pointAlong(p.sh,Math.max(0,d-120)), here=pointAlong(p.sh,d);
+  const path=walkPath([s.lat,s.lon],[dst.lat,dst.lon]); let w=path[path.length-1], acc=0;
+  for(let i=1;i<path.length;i++){ acc+=distM(path[i-1][0],path[i-1][1],path[i][0],path[i][1]); if(acc>=100){ w=path[i]; break; } }
+  const k=Math.cos(s.lat*Math.PI/180), bx=(here[1]-a[1])*k, by=here[0]-a[0], wx=(w[1]-s.lon)*k, wy=w[0]-s.lat;
+  const n=Math.hypot(bx,by)*Math.hypot(wx,wy); if(!n||acc<40&&distM(s.lat,s.lon,w[0],w[1])<40) return false;
+  return (bx*wx+by*wy)/n< -0.5;   /* more than 120° apart */
 }
 /* how good a journey feels: time door to door, walking counted double, 5 minutes for each change and 10
    more for a bus taken for just one stop */
