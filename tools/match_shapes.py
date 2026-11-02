@@ -685,15 +685,22 @@ def smooth(pts, ds, cap=5.0):
 
 
 def drop_collinear(pts, ds, tol=0.25):
-    """remove points lying within `tol` metres of the line through their two neighbours (local, deterministic)"""
-    P, D = [pts[0]], [ds[0]]
+    """remove points lying within `tol` metres of the straight line that replaces them (local, deterministic).
+    Every point dropped since the last kept one must stay within `tol` of the new line, not just the latest:
+    otherwise, on a smooth curve (a roundabout), each point is close to the line through its neighbours,
+    so the points are dropped one after another and the curve turns into a long straight chord."""
+    P, D = [pts[0]], [ds[0]]; first = 1                  # pts[first:k] were dropped since P[-1]
     for k in range(1, len(pts) - 1):
-        a, b, c = P[-1], pts[k], pts[k + 1]
+        a, c = P[-1], pts[k + 1]
         dx, dy = c[0] - a[0], c[1] - a[1]; L = math.hypot(dx, dy)
-        if L and abs(dy * (b[0] - a[0]) - dx * (b[1] - a[1])) / L <= tol and \
-                (b[0] - a[0]) * dx + (b[1] - a[1]) * dy >= 0 and (c[0] - b[0]) * dx + (c[1] - b[1]) * dy >= 0:
+        ok = L > 0
+        for b in pts[first:k + 1] if ok else ():
+            if abs(dy * (b[0] - a[0]) - dx * (b[1] - a[1])) / L > tol or \
+                    (b[0] - a[0]) * dx + (b[1] - a[1]) * dy < 0 or (c[0] - b[0]) * dx + (c[1] - b[1]) * dy < 0:
+                ok = False; break
+        if ok:
             continue
-        P.append(b); D.append(ds[k])
+        P.append(pts[k]); D.append(ds[k]); first = k + 1
     P.append(pts[-1]); D.append(ds[-1])
     return P, D
 
