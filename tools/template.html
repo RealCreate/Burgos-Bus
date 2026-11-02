@@ -78,11 +78,11 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .hint.away{display:none}
 .maplegend{display:flex;gap:12px;align-items:center;padding:5px 10px;border-radius:999px;background:var(--glass-solid);box-shadow:var(--float);font:600 .72rem/1.2 var(--font-body);color:var(--ink);margin:0 0 8px 8px!important}
 .maplegend[hidden]{display:none}
-.maplegend .lg{display:inline-block;width:12px;height:12px;border-radius:4px;margin-right:6px;vertical-align:-2px;background:var(--muted)}
+.maplegend .lg{display:inline-block;width:12px;height:12px;border-radius:4px;margin-inline-end:6px;vertical-align:-2px;background:var(--muted)}
 .maplegend .lg.live{background:var(--surface);box-shadow:0 0 0 2.5px var(--live)}
 .pbox{display:flex;align-items:center;gap:8px}
 .pfields{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--surface);border-radius:12px;box-shadow:var(--shadow);overflow:hidden}
-.pfield{display:flex;align-items:center;gap:10px;padding:12px 14px;text-align:left;font:inherit;font-weight:600;color:var(--ink);min-height:46px}
+.pfield{display:flex;align-items:center;gap:10px;padding:12px 14px;text-align:start;font:inherit;font-weight:600;color:var(--ink);min-height:46px}
 .pfield+.pfield{border-top:1px solid var(--rule)}
 .pfield.empty{color:var(--muted);font-weight:400}
 .pfield span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -97,27 +97,27 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .pic{flex:none;width:28px;text-align:center;font-size:1.2rem}
 .popt .t1 b{font-size:1.05rem}
 .popt.sel{box-shadow:inset 3px 0 0 var(--accent)}
-.pdur{color:var(--muted);font-weight:600;margin-left:6px}
+.pdur{color:var(--muted);font-weight:600;margin-inline-start:6px}
 .psteps{display:flex;align-items:center;flex-wrap:wrap;gap:4px;margin:6px 0 4px}
 .parr{color:var(--muted);font-size:.9rem}
 .pwalk{display:inline-flex;align-items:center;gap:2px;font-size:.8rem;font-weight:700;color:var(--muted)}
 .walkic{width:16px;height:16px;vertical-align:-3px}
-.chev{color:var(--muted);font-size:1.4rem;padding-left:4px}
+.chev{color:var(--muted);font-size:1.4rem;padding-inline-start:4px}
 .ptrip{list-style:none;margin:0;padding:0}
 .ptrip li{display:grid;grid-template-columns:3.4em 1fr;gap:12px;position:relative;padding:0 0 18px}
-.ptrip li::before{content:"";position:absolute;left:calc(3.4em + 5px);top:6px;bottom:-6px;width:4px;border-radius:2px;background:var(--lc,transparent);border-left:3px dotted var(--muted)}
+.ptrip li::before{content:"";position:absolute;inset-inline-start:calc(3.4em + 5px);top:6px;bottom:-6px;width:4px;border-radius:2px;background:var(--lc,transparent);border-inline-start:3px dotted var(--muted)}
 .ptrip li.pb::before{border:0;background:var(--lc)}
 .ptrip li.pa::before,.ptrip li.pend::before{display:none}
-.ptrip li>div{padding-left:18px}
-.ptime-l{font-weight:700;font-variant-numeric:tabular-nums;text-align:right}
-.ptake{display:flex;align-items:center;gap:8px;margin:6px 0 2px;padding:0;background:none;border:0;font:inherit;color:var(--ink);text-align:left}
+.ptrip li>div{padding-inline-start:18px}
+.ptime-l{font-weight:700;font-variant-numeric:tabular-nums;text-align:end}
+.ptake{display:flex;align-items:center;gap:8px;margin:6px 0 2px;padding:0;background:none;border:0;font:inherit;color:var(--ink);text-align:start}
 .ppin{border-radius:50%;background:var(--surface);box-shadow:0 0 0 5px var(--accent),0 2px 6px rgba(0,0,0,.4)}
 .ppin.d{border-radius:5px;background:var(--warn);box-shadow:0 0 0 3px var(--surface),0 2px 6px rgba(0,0,0,.4)}
 .linkish{background:none;border:0;padding:0;font:inherit;color:var(--accent);font-weight:600;text-decoration:underline;text-underline-offset:2px}
 .banner.dv b{display:block;margin-bottom:4px}.banner.dv>div{margin-top:3px}.banner.dv .badge{vertical-align:middle}
 .dvnote{color:var(--muted);font-size:.78rem;margin-top:6px!important}
-.tmpl{background:none;border:0;padding:0;margin:0;font:inherit;color:var(--accent);text-decoration:underline;cursor:pointer;text-align:left}
-.dvtag{display:inline-block;font-size:.74rem;font-weight:700;color:var(--warn);margin-right:6px}
+.tmpl{background:none;border:0;padding:0;margin:0;font:inherit;color:var(--accent);text-decoration:underline;cursor:pointer;text-align:start}
+.dvtag{display:inline-block;font-size:.74rem;font-weight:700;color:var(--warn);margin-inline-end:6px}
 .dvpop{font-size:.8rem;line-height:1.35;margin:4px 0 8px;padding:8px 10px;border-radius:10px;background:color-mix(in srgb,var(--warn) 12%,transparent)}
 .stop.closed .nm b{text-decoration:line-through;color:var(--muted)}.stop.closed .dot{opacity:.35}
 .banner{background:color-mix(in srgb,var(--warn) 12%,var(--surface));border:1px solid color-mix(in srgb,var(--warn) 35%,var(--rule));color:var(--ink);border-radius:12px;padding:10px 12px;font-size:.84rem;margin-bottom:12px}
@@ -134,7 +134,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .bulk .chip{color:var(--accent)}
 
 .list{display:flex;flex-direction:column;background:var(--surface);border-radius:14px;box-shadow:var(--shadow);overflow:hidden}
-.row{display:flex;align-items:center;gap:12px;padding:12px 14px;text-align:left;width:100%;border-top:1px solid var(--rule)}
+.row{display:flex;align-items:center;gap:12px;padding:12px 14px;text-align:start;width:100%;border-top:1px solid var(--rule)}
 .row:first-child{border-top:0}
 .row:active{background:var(--sunk)}
 .row .main{flex:1;min-width:0}
@@ -142,7 +142,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .row .t2{font-size:.82rem;color:var(--muted);margin-top:2px}
 .row .chev{color:var(--muted);flex:none}
 .live{color:var(--live);font-weight:700}
-.livedot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--live);margin-right:5px;vertical-align:1px;animation:pulse 2s infinite}
+.livedot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--live);margin-inline-end:5px;vertical-align:1px;animation:pulse 2s infinite}
 @keyframes pulse{50%{opacity:.35}}
 @media (prefers-reduced-motion:reduce){.livedot{animation:none}}
 .star{color:var(--rule);font-size:1.25rem;line-height:1;padding:6px}
@@ -168,26 +168,26 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 
 /* route timeline */
 .tl{background:var(--surface);border-radius:14px;box-shadow:var(--shadow);padding:6px 0}
-.stop{position:relative;padding:10px 14px 12px 54px;min-height:58px}
-.stop::before{content:"";position:absolute;left:26px;top:0;bottom:0;width:6px;background:var(--rc)}
+.stop{position:relative;padding-block:10px 12px;padding-inline:54px 14px;min-height:58px}
+.stop::before{content:"";position:absolute;inset-inline-start:26px;top:0;bottom:0;width:6px;background:var(--rc)}
 .stop.first::before{top:20px}
 .stop.last::before{bottom:calc(100% - 20px)}
-.dot{position:absolute;left:21px;top:13px;width:16px;height:16px;border-radius:50%;background:var(--surface);border:4px solid var(--rc);z-index:1}
-.stop.first .dot,.stop.last .dot{width:20px;height:20px;left:19px;top:11px;border-width:5px}
+.dot{position:absolute;inset-inline-start:21px;top:13px;width:16px;height:16px;border-radius:50%;background:var(--surface);border:4px solid var(--rc);z-index:1}
+.stop.first .dot,.stop.last .dot{width:20px;height:20px;inset-inline-start:19px;top:11px;border-width:5px}
 .stop.hl{background:color-mix(in srgb,var(--rc) 12%,transparent)}
-.stop .nm{width:100%;text-align:left;display:block}
+.stop .nm{width:100%;text-align:start;display:block}
 .stop .nm b{font-weight:700;line-height:1.25}
-.stop .code{font-size:.72rem;color:var(--muted);margin-left:6px;font-variant-numeric:tabular-nums}
+.stop .code{font-size:.72rem;color:var(--muted);margin-inline-start:6px;font-variant-numeric:tabular-nums}
 .xfer{display:flex;flex-wrap:wrap;gap:3px;margin-top:4px}
 .times{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}
 .tm{font:600 .95rem/1 var(--font-display);font-variant-numeric:tabular-nums;padding:5px 8px;border-radius:7px;background:var(--sunk);color:var(--ink)}
 .tm.next{background:var(--ink);color:var(--bg)}
-.tm em{font-style:normal;font-family:var(--font-body);font-weight:400;font-size:.7rem;color:inherit;opacity:.75;margin-left:4px}
+.tm em{font-style:normal;font-family:var(--font-body);font-weight:400;font-size:.7rem;color:inherit;opacity:.75;margin-inline-start:4px}
 .tm.tmrw:not(.next){background:none;box-shadow:inset 0 0 0 1px var(--sunk)}
 .dayrule{padding:10px 14px 6px;font:600 .74rem var(--font-body);letter-spacing:.04em;text-transform:uppercase;color:var(--muted);border-top:1px solid var(--sunk)}
 .pop .pt small.tmrw{font:500 .7rem var(--font-body);color:var(--muted)}
-.tm.none{background:none;padding-left:0;color:var(--muted);font-family:var(--font-body);font-weight:400;font-size:.82rem}
-.bus{position:absolute;left:12px;z-index:3;transform:translateY(-50%);display:flex;align-items:center;justify-content:center;width:34px;height:24px;border-radius:7px;background:var(--rc);color:var(--rt);box-shadow:0 0 0 2px var(--surface),0 2px 6px rgba(0,0,0,.25);transition:top .8s ease}
+.tm.none{background:none;padding-inline-start:0;color:var(--muted);font-family:var(--font-body);font-weight:400;font-size:.82rem}
+.bus{position:absolute;inset-inline-start:12px;z-index:3;transform:translateY(-50%);display:flex;align-items:center;justify-content:center;width:34px;height:24px;border-radius:7px;background:var(--rc);color:var(--rt);box-shadow:0 0 0 2px var(--surface),0 2px 6px rgba(0,0,0,.25);transition:top .8s ease}
 .bus svg{width:18px;height:18px}
 @media (prefers-reduced-motion:reduce){.bus{transition:none}}
 .full{margin-top:10px;border-top:1px dashed var(--rule);padding-top:8px}
@@ -196,10 +196,10 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .full .hr span{font:500 .95rem var(--font-display);word-spacing:.35em}
 .full .hr span i{font-style:normal;color:var(--muted);font-size:.75em}
 .full .past{opacity:.45}
-.linkbtn{display:inline-flex;align-items:center;gap:6px;margin-top:8px;margin-right:6px;padding:6px 11px;border-radius:999px;border:1px solid var(--rule);font-size:.8rem;font-weight:700;color:var(--accent);text-decoration:none;background:var(--surface)}
+.linkbtn{display:inline-flex;align-items:center;gap:6px;margin-top:8px;margin-inline-end:6px;padding:6px 11px;border-radius:999px;border:1px solid var(--rule);font-size:.8rem;font-weight:700;color:var(--accent);text-decoration:none;background:var(--surface)}
 
 /* departures board */
-.dep{display:flex;align-items:center;gap:12px;padding:11px 14px;border-top:1px solid var(--rule);width:100%;text-align:left}
+.dep{display:flex;align-items:center;gap:12px;padding:11px 14px;border-top:1px solid var(--rule);width:100%;text-align:start}
 .dep:first-child{border-top:0}
 .dep .main{flex:1;min-width:0}
 .dep.skel{pointer-events:none}
@@ -211,12 +211,22 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 @keyframes skel{from{opacity:.55}to{opacity:1}}
 .dep .hs{font-weight:700;line-height:1.2}
 .dep .via{font-size:.78rem;color:var(--muted)}
-.dep .when{text-align:right;font:700 1.15rem/1 var(--font-display);font-variant-numeric:tabular-nums}
+.dep .when{text-align:end;font:700 1.15rem/1 var(--font-display);font-variant-numeric:tabular-nums}
 .dep .when small{display:block;font:400 .74rem var(--font-body);color:var(--muted);margin-top:3px}
 .dep .when.soon{color:var(--live)}
 
 /* map */
-#map{position:absolute;inset:0;background:var(--bg)}
+#map{position:absolute;inset:0;background:var(--bg);direction:ltr}   /* the map and its controls stay left to right, as Leaflet expects */
+/* right-to-left languages: the panels and header flip (logical CSS properties), the map doesn't.
+   Arrows that mean back / forward point the other way. */
+[dir=rtl] .leaflet-popup-content{direction:rtl}
+[dir=rtl] .t1,[dir=rtl] .main h2,[dir=rtl] .hs,[dir=rtl] .nm b,[dir=rtl] .ph,[dir=rtl] .selchip .nm{unicode-bidi:plaintext;text-align:right}   /* Spanish names keep their punctuation in place */
+[dir=rtl] .chev,[dir=rtl] .back svg{transform:scaleX(-1)}
+[dir=rtl] .day{padding:6px 12px 6px 28px;background-position:10px 55%,15px 55%}
+[dir=rtl] .nav-push>*{animation-name:navPushR}[dir=rtl] .nav-pop>*{animation-name:navPopR}
+@keyframes navPushR{from{opacity:0;transform:translateX(-28px)}}
+@keyframes navPopR{from{opacity:0;transform:translateX(28px)}}
+
 .leaflet-container{background:var(--bg)!important;font-family:var(--font-body)!important}
 .leaflet-popup-content-wrapper,.leaflet-popup-tip{background:var(--surface)!important;color:var(--ink)!important}
 .leaflet-bar a{background:var(--surface)!important;color:var(--ink)!important;border-color:var(--rule)!important}
@@ -238,7 +248,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .lshead h3{margin:0 4px;font:700 1.15rem var(--font-display)}
 .lslist{overflow-y:auto;min-height:0;margin:0 -14px;padding:0 14px}
 .lslist .eyebrow{margin-top:6px}
-.lrow{display:flex;align-items:center;gap:12px;width:100%;padding:11px 14px;text-align:left;border-top:1px solid var(--rule)}
+.lrow{display:flex;align-items:center;gap:12px;width:100%;padding:11px 14px;text-align:start;border-top:1px solid var(--rule)}
 .lrow:first-child{border-top:0}
 .lrow .main{flex:1;min-width:0}
 .lrow .t1{font-weight:700}
@@ -278,7 +288,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .veh.live .body{filter:drop-shadow(0 0 2.5px var(--live)) drop-shadow(0 0 6px color-mix(in srgb,var(--live) 75%,transparent)) drop-shadow(0 2px 3px rgba(0,0,0,.35))}
 .lvrow{font-size:.74rem;line-height:1.35;color:var(--muted);margin:3px 0 7px;font-variant-numeric:tabular-nums}
 .lvrow b{color:var(--live);font-weight:600}
-.wifi{width:13px;height:13px;color:var(--live);overflow:visible;vertical-align:-2px;margin-right:4px}
+.wifi{width:13px;height:13px;color:var(--live);overflow:visible;vertical-align:-2px;margin-inline-end:4px}
 .wifi .w{transition:opacity .4s}.wifi.b2 .w2,.wifi.b1 .w2,.wifi.b1 .w1,.wifi.b0 .w1,.wifi.b0 .w2{opacity:.2}
 .wifi.b0{color:var(--muted)}.lvrow.old b{color:var(--muted)}
 /* while the bus's position is being fetched, the signal runs out through the waves: dot, then each arc */
@@ -286,8 +296,8 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .wifi.busy .w1{animation-delay:.18s}.wifi.busy .w2{animation-delay:.36s}
 @keyframes wave{0%,15%{opacity:.22}45%,100%{opacity:1}}
 @media (prefers-reduced-motion:reduce){.wifi.busy .w{animation:none}}
-.bus.live::after{content:"";position:absolute;right:-3px;top:-3px;width:8px;height:8px;border-radius:50%;background:var(--live);box-shadow:0 0 0 2px var(--surface)}
-.eyebrow .livedot{margin-right:6px}
+.bus.live::after{content:"";position:absolute;inset-inline-end:-3px;top:-3px;width:8px;height:8px;border-radius:50%;background:var(--live);box-shadow:0 0 0 2px var(--surface)}
+.eyebrow .livedot{margin-inline-end:6px}
 .veh .body{position:absolute;left:50%;top:50%;width:22.4px;height:48.2px;margin:-24.1px 0 0 -11.2px;overflow:visible;pointer-events:auto;cursor:pointer;filter:drop-shadow(0 2px 3px rgba(0,0,0,.35))}
 .veh .arrow{position:absolute;left:50%;top:-6px;margin-left:-6px;width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-bottom:8px solid var(--muted);filter:drop-shadow(0 0 1.5px var(--surface))}
 .veh .num{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font:700 11.5px/1 var(--font-display);letter-spacing:-.02em;color:var(--t);font-variant-numeric:tabular-nums;white-space:nowrap;pointer-events:none}
@@ -295,12 +305,12 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .pop .code{font-size:.72rem;color:var(--muted)}
 .pop ul{list-style:none;margin:8px 0 6px;padding:0;display:flex;flex-direction:column;gap:4px}
 .pop li{display:flex;align-items:center;gap:6px;font-size:.82rem}
-.pop li b{margin-left:auto;font:700 .95rem var(--font-display);font-variant-numeric:tabular-nums}
+.pop li b{margin-inline-start:auto;font:700 .95rem var(--font-display);font-variant-numeric:tabular-nums}
 .pop button{font-weight:700;color:var(--accent);font-size:.84rem}
 .pop li{flex-wrap:wrap;row-gap:2px}
-.pop .pl{display:flex;align-items:center;gap:6px;color:var(--ink);font-weight:700;min-width:0;flex:1 1 8.5em;text-align:left}   /* room for the destination; times wrap below when short of space */
+.pop .pl{display:flex;align-items:center;gap:6px;color:var(--ink);font-weight:700;min-width:0;flex:1 1 8.5em;text-align:start}   /* room for the destination; times wrap below when short of space */
 .pop .ph{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pop .pt{margin-left:auto;font:700 .9rem var(--font-display);font-variant-numeric:tabular-nums;white-space:nowrap}
+.pop .pt{margin-inline-start:auto;font:700 .9rem var(--font-display);font-variant-numeric:tabular-nums;white-space:nowrap}
 /* Leaflet's own .leaflet-bar a rules (display:block, line-height) outrank a plain class, so match their specificity */
 .leaflet-bar a.locate{display:flex;align-items:center;justify-content:center;padding:0;line-height:0;background:var(--surface)!important;color:var(--accent)!important}
 .leaflet-bar a.locate svg{display:block;flex:none}
@@ -365,7 +375,7 @@ body{font:16px/1.4 var(--font-body);-webkit-font-smoothing:antialiased;letter-sp
 /* inset grouped lists */
 .list,.tl{border-radius:12px;box-shadow:none;background:var(--surface)}
 .row,.dep{border-top:0;position:relative;min-height:52px}
-.row+.row::before,.dep+.dep::before,.lrow+.lrow::before{content:"";position:absolute;top:0;right:0;left:16px;border-top:.5px solid var(--rule)}
+.row+.row::before,.dep+.dep::before,.lrow+.lrow::before{content:"";position:absolute;top:0;inset-inline-end:0;inset-inline-start:16px;border-top:.5px solid var(--rule)}
 .list>.row>.row::before{display:none}
 .lrow{border-top:0;position:relative}
 .row .t1,.dep .hs,.lrow .t1{font-weight:590;letter-spacing:-.015em}
@@ -428,7 +438,7 @@ body{font:16px/1.4 var(--font-body);-webkit-font-smoothing:antialiased;letter-sp
 
 .selstop .dot{box-shadow:0 0 0 3px #fff,0 2px 10px rgba(0,0,0,.35)}
 @media (prefers-reduced-motion:reduce){
-  .nav-push>*,.nav-pop>*{animation:navFade 160ms ease}
+  .nav-push>*,.nav-pop>*,[dir=rtl] .nav-push>*,[dir=rtl] .nav-pop>*{animation:navFade 160ms ease}
   @keyframes navFade{from{opacity:0}}
   .leaflet-popup-content-wrapper{animation:none}
   .panel,.langsheet{transition:opacity 160ms ease!important}
@@ -480,10 +490,10 @@ body{font:16px/1.4 var(--font-body);-webkit-font-smoothing:antialiased;letter-sp
 /* last bus of the day, nearest stop to you, share button and its confirmation */
 .lastbus{display:inline-block;font:600 .68rem/1.4 var(--font-body);letter-spacing:0;padding:0 6px;border-radius:999px;vertical-align:1px;
   background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)}
-.tm em.lastbus{font-style:normal;opacity:1;margin-left:6px;background:var(--surface);color:var(--warn)}
+.tm em.lastbus{font-style:normal;opacity:1;margin-inline-start:6px;background:var(--surface);color:var(--warn)}
 .tm.next em.lastbus{background:#fff;color:var(--warn)}
 .pop small.lastbus{font-size:.66rem}
-.nearyou{display:inline-block;margin-left:8px;font:600 .68rem/1.4 var(--font-body);padding:0 6px;border-radius:999px;background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent);vertical-align:1px}
+.nearyou{display:inline-block;margin-inline-start:8px;font:600 .68rem/1.4 var(--font-body);padding:0 6px;border-radius:999px;background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent);vertical-align:1px}
 .stop.near .dot{box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 35%,transparent)}
 .dhead .share{color:var(--accent)}
 .toast{position:absolute;z-index:2100;left:50%;bottom:calc(28px + env(safe-area-inset-bottom,0px));transform:translate(-50%,8px);opacity:0;
@@ -500,11 +510,14 @@ body{font:16px/1.4 var(--font-body);-webkit-font-smoothing:antialiased;letter-sp
 .fab{right:64px;pointer-events:none}
 .fab button{pointer-events:auto;min-width:0}
 .fab button span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* labels too long for the row (set by fitFab): drop the icons before cutting words short */
+.fab.compact button{padding:10px 12px;gap:6px}.fab.compact button svg{display:none}
 .hint{max-width:min(300px,calc(100% - 88px))}
 @media (max-width:380px){
   .fab button{padding:10px 12px;gap:6px}.fab button svg{display:none}
   .top{padding:8px 10px}.brand{font-size:1.05rem}
   .day{padding:6px 22px 6px 10px;max-width:104px;background-position:calc(100% - 13px) 55%,calc(100% - 8px) 55%}
+  [dir=rtl] .day{padding:6px 10px 6px 22px;background-position:8px 55%,13px 55%}
   .langbtn .flag{display:none}}
 @media (max-width:360px){.day{max-width:92px}}
 @media (prefers-reduced-motion:reduce){
@@ -2076,13 +2089,22 @@ function setTheme(m){
 /* ---------- language ---------- */
 function applyStatic(){
   document.documentElement.lang=lang;
+  document.documentElement.dir=I18N[lang].rtl?'rtl':'ltr';   /* Arabic, Persian, Urdu, Pashto read right to left */
   document.querySelectorAll('[data-i18n]').forEach(e=>e.textContent=T(e.dataset.i18n));
   document.querySelectorAll('[data-i18n-aria]').forEach(e=>e.setAttribute('aria-label',T(e.dataset.i18nAria)));
-  const lb=$('#langbtn'); lb.innerHTML=`${flagHtml(lang)}<span>${lang.toUpperCase()}</span>`; lb.setAttribute('aria-label',`${lang.toUpperCase()}, ${T('language')}: ${I18N[lang].name}`);
+  const lb=$('#langbtn'); const ab=(I18N[lang].abbr||lang).toUpperCase(); lb.innerHTML=`${flagHtml(lang)}<span>${esc(ab)}</span>`; lb.setAttribute('aria-label',`${ab}, ${T('language')}: ${I18N[lang].name}`);
   $('#langtitle').textContent=T('language'); $('#q-lang').placeholder=T('searchLang'); $('#langclose').setAttribute('aria-label',T('close'));
   document.querySelectorAll('.locate').forEach(a=>{a.title=T('locate');a.setAttribute('aria-label',T('locate'))});
   paintThemeBtn();
+  fitFab(true);
 }
+/* The Lines / Stops / Plan buttons share the space left of the zoom buttons. When a language's labels
+   don't fit with their icons, the icons go (class compact). Checked again whenever the row changes width. */
+let fabW=-1;
+function fitFab(force){const f=$('.fab'); if(!f) return; const w=f.clientWidth; if(!w||(!force&&w===fabW)) return; fabW=w;
+  f.classList.remove('compact');
+  if([...f.querySelectorAll('button span')].some(x=>x.scrollWidth>x.clientWidth+1)) f.classList.add('compact');}
+try{new ResizeObserver(()=>fitFab()).observe($('.fab'))}catch(e){addEventListener('resize',()=>fitFab())}
 function langList(){
   const q=$('#q-lang').value.trim().toLowerCase();
   const norm=s=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
