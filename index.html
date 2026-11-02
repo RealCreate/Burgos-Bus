@@ -1260,8 +1260,8 @@ body{font:16px/1.4 var(--font-body);-webkit-font-smoothing:antialiased;letter-sp
 (function(){
 "use strict";
 const STANDALONE = true;
-const BUILD = '02 Nov 12:20';
-const BUILD_ID = '1793618423';
+const BUILD = '02 Nov 12:57';
+const BUILD_ID = '1793620676';
 /* The street map is the site's own: an OpenStreetMap extract of Burgos only (map/burgos.pmtiles, built by
    .github/workflows/build-map.yml), drawn on the phone by protomaps-leaflet. MAP_BOUNDS is the box that file
    covers; the map can't be dragged or zoomed out beyond it. Keep it in step with BBOX in that workflow.
@@ -2044,10 +2044,28 @@ function initMap(){
   map.on('popupclose',e=>{if(e.popup._stop!=null&&e.popup._stop===popupStop){popupStop=null;markSel()}
     if(e.popup._source&&e.popup._source===busFocusSrc){ busFocusSrc=null; setBusFocus(null); }});
   map.on('zoomend',drawArrows);
+  setupPinchRedraw();
   map.on('click',e=>{
     if(plan.pick){ const which=plan.pick; setPick(null); st.panel=true; st.tab='plan'; st.stack=[];
       loadPlaces().then(()=>setPlace(which,{t:'pin',name:nameNear(e.latlng.lat,e.latlng.lng),lat:e.latlng.lat,lon:e.latlng.lng})); return; }
     if(st.panel&&!wide()&&st.full){st.full=false;render(true)} });
+}
+/* Pinch zoom: Leaflet only stretches the lines it drew before the pinch and draws them again when
+   you let go, so zooming out showed a shrinking patch of lines with nothing around it. While the
+   fingers are down, the lines and stops (with their sizes) are drawn again for the current zoom every ~90 ms. Every
+   canvas counts: the main one and those Leaflet makes for other panes (the planned trip). */
+function setupPinchRedraw(){
+  let last=0, timer=0;
+  const redraw=()=>{ timer=0;
+    if(!map.touchZoom||!map.touchZoom._zooming||map._animatingZoom) return;   /* let go: zoomend does it */
+    last=performance.now();
+    styleStops();                 /* stop size and which stops show follow the zoom too */
+    const rs=new Set([map.options.renderer,...Object.values(map._paneRenderers||{})]);
+    for(const r of rs){ if(!r||!r._map) continue;
+      for(const id in r._layers) r._layers[id]._project();
+      r._update(); }
+  };
+  map.on('zoom',e=>{ if(!e.pinch||timer) return; timer=setTimeout(redraw,Math.max(0,90-(performance.now()-last))); });
 }
 /* Double tap (or double click) zooms in one level, keeping the tapped point under your finger, as in
    Apple and Google Maps. Leaflet's own version listens for dblclick, which iPhone Safari doesn't send
